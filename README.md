@@ -1,4 +1,4 @@
-# -mod-b-
+# 魔理沙的卫戍协议盟约mod追加
 针对卫戍协议盟约的系内容追加，mod添加
 本mod基于ausevay大佬的卫戍协议盟约开发，大家可以去点一个star，源网址：https://github.com/sganggs/Stronghold-Protocol
 本mod添加内容
