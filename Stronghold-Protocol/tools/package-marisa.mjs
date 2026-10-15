@@ -17,7 +17,7 @@ import { writePackIndex } from './packs.mjs';
 import { digestFile, inManifest, listedArtFiles } from '../server/update.js';
 
 export const UPSTREAM = '488db49f11daf862b67ce26fa4cf89aa6cba2466';
-export const SOURCE_RELEASE = 'https://github.com/Ruyl114514/marisa-s-mod/blob/marisa-0.2.6-20261015/Stronghold-Protocol';
+export const SOURCE_RELEASE = 'https://github.com/Ruyl114514/marisa-s-mod/blob/marisa-0.2.6-20261015-fix1/Stronghold-Protocol';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 /** Copy only npm's production lock entries, and refuse a different installed version. */

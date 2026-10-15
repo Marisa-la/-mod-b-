@@ -967,3 +967,5 @@ universal equipment bypass. Rockrock/Flametail's measured weighted subsets remai
 The maintained Marisa extension keeps original and MOD profiles separate. Its four manager groups select original operator records, added-operator shop/DIY routes, added bond affiliations and added strategies; each room freezes the selected data view. See [MOD operation and maintenance](MODS.md) for generation, source evidence, room configuration and tests.
 
 维护分支补充（2026-10-15）：浏览器同步干员调配、持有、自选偏好时，以玩法 profile 和有效 payload 一起去重；切换 profile 会取消旧准备/回应并重发设置，即使用户没有再编辑。已创建房间仍以房间配置为准。
+
+房间启动对局时同时传递 `mods`、`modOptions`、`contentHash`；每个 `b.start.spec` 保留这三项，使浏览器、观战和重连都使用房主的实际子选项。遗漏子选项会使自定义房间加载默认 MOD 数据、内容校验失败并阻止战斗启动。

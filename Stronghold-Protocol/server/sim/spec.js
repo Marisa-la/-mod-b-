@@ -60,6 +60,8 @@ export function buildBattleSpec(o = {}) {
   const spec = {
     v: SPEC_VERSION,
     mods: Array.isArray(o.mods) ? o.mods : [],
+    // The browser loads data from the spec, including when watching or reconnecting without a warm room cache.
+    modOptions: o.modOptions ?? null,
     contentHash: typeof o.contentHash === 'string' ? o.contentHash : null,
     battleId: o.battleId ?? null,
     fieldId: o.fieldId ?? null,

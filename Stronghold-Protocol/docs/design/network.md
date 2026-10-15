@@ -167,3 +167,7 @@ New-alliance member choices are optional allowlisted booleans in `modOptions.bon
 `bondId:charId`. Missing entries follow the operator profile; explicit entries override its affiliation after composition.
 They are normalized, frozen and hashed through the same room profile as the other settings. A disabled alliance still
 overrides every member selection.
+
+Every `b.start.spec` also carries the room's normalized `modOptions` alongside `mods` and `contentHash`, including
+normal, co-op and boss fields and the copies sent to watchers or reconnecting players. The browser sim loads its
+profile from this spec; forwarding only the MOD id would select default data and fail the custom room's hash check.

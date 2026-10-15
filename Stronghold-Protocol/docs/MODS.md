@@ -111,6 +111,12 @@ node tools/package-mod.mjs
 
 ## 本轮管理器验证（2026-10-15）
 
+### 自定义房间不出怪修复（PR #1 后续）
+
+真实房间复现确认：默认 MOD 数据可启动，但修改任一影响内容的子选项后，房间保存了自定义数据与内容哈希，却在房间 → 对局 → BattleSpec 三处遗漏 `modOptions`。浏览器因此加载默认 MOD 数据，触发内容校验失败，未启动本地战斗。现已完整传递子选项；所有场地类型、观战和重连共用这条修复路径，内容校验仍保持开启。
+
+本次定向检查 `node --test test/mod/manager.test.js test/mod/profiles.test.js test/mod/match-spawns.test.js test/match/clientCombat.test.js test/docs-consistency.test.js test/docs-paths.test.js`：`tests 87 / pass 87 / fail 0`。新增固定种子的真实浏览器测试 `SP_MOD_E2E=1 node --test test/mod/match-spawns.e2e.test.js`：`tests 1 / pass 1 / fail 0`，验证单人及联机自定义房间在实际 runner 快照中出现敌人。原版、默认 MOD、自定义 MOD 的六项快速用例同时覆盖重连。类型检查与修改文件 ESLint 无错误；全仓导入检查仍报告已发布基线中相同的三条 `server/sim/nodeData.js` Node-only 导入，未扩展修复范围。本次没有生成数据或玩法规则变动，不更新 golden。
+
 - 相关自选/管理器/kit 注册测试：41 项通过；覆盖四名追加干员在 V、VI 阶的普通/精锐记录、实际 MOD kit、双向跨阶互斥、原版候选与召唤物恢复、盟约筛选及鲲开关。
 - 房间与玩法 profile 测试：11 项通过，包含真实服务端的重连配置/内容哈希一致，以及原有非默认装备模组偏好与实际效果保持一致。
 - 显式开启的浏览器验收：2 项通过；实际操作 V 阶结城理和 VI 阶医疗阿米娅，验证另一阶不可重复选、四名候选可见、保存同步、盟约显示、战斗一致性和皮肤动画。

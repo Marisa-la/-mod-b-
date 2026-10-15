@@ -2,7 +2,7 @@
 
 本次将旧 0.2.4 替换包的可读 JavaScript 增量迁移到上游 0.2.6，提供可维护源码、按房间配置的 MOD 管理器、完整运行包和替换包。默认使用原版；启用后加入者、观战者与重连者跟随房主的规则。
 
-- [完整包、替换包和 SHA256](https://github.com/Ruyl114514/marisa-s-mod/releases/tag/marisa-0.2.6-20261015)
+- [完整包、替换包和 SHA256](https://github.com/Ruyl114514/marisa-s-mod/releases/tag/marisa-0.2.6-20261015-fix1)
 - [玩家使用与测试教程](Stronghold-Protocol/docs/MARISA-GUIDE.md)
 - [开发者使用手册（AI 生成）](Stronghold-Protocol/docs/MARISA-DEVELOPER.md)
 - [完整差异清单](Stronghold-Protocol/docs/MARISA-DIFFERENCES.md)

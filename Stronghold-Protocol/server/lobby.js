@@ -759,7 +759,7 @@ export class Lobby {
         // the room's match number: with the seed it keeps battleIds unique across the room's matches (DESIGN §14)
         matchNo: room.matchCount + 1,
         data: room.data || this.safeData(),
-        mods: room.mods || [], contentHash: room.contentHash,
+        mods: room.mods || [], modOptions: room.modOptions, contentHash: room.contentHash,
         log: this.log,
         now: this.now,
         send: (playerId, msg) => (ctx.live ? this.matchSend(room, ctx, playerId, msg) : false),
