@@ -6,6 +6,12 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { overlayArt, productionModules, runtimePaths } from '../../tools/package-marisa.mjs';
+import { selectTracked } from '../../tools/package.mjs';
+
+test('runtime includes the single-battle viewer while excluding other development pages', () => {
+  const files = ['public/dev/render-demo.html', 'public/dev/render-demo.js', 'public/dev/sim-check.html', 'public/dev/recordings/mod-test.json'];
+  assert.deepEqual(selectTracked(files).keep, files.slice(0, 2));
+});
 
 test('replacement retains original art and adds only new referenced assets', () => {
   const full = ['public/assets/chess/original.png', 'public/assets/chess/makoto.png', 'public/fonts/a.woff2', 'data/local-assets.json'];

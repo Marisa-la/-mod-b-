@@ -164,6 +164,7 @@ export function isJunk(rel) {
 export function isPlayerFile(rel) {
   const p = posixRel(rel);
   if (!p || isRefused(p) || isJunk(p) || p === 'data/local-assets.json' || p === GENERATED_PACK_INDEX) return false;
+  if (PLAYER_TEST_VIEW.includes(p)) return true;
   if (NOT_TRACKED_SHIP.some((d) => p.startsWith(d))) return false;
   if (RUNTIME_DIRS.some((d) => p.startsWith(d)) || PLAYER_TOOL_DIRS.some((d) => p.startsWith(d))) return true;
   return ROOT_FILES.includes(p) || PLAYER_DOCS.includes(p) || RUNTIME_RESEARCH.includes(p) || PLAYER_SCRIPTS.includes(p) || PLAYER_TOOLS.includes(p);
