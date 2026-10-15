@@ -9,6 +9,7 @@ import {
   FOLDER, PLAYER_MARKDOWN, GENERATED_PACK_INDEX, listTree, plan, playerPackageJson,
   rewritePlayerDoc, stageProblems, zipFolder, ROOT_FILES, PLAYER_DOCS, RUNTIME_RESEARCH,
   PLAYER_SCRIPTS, PLAYER_TOOLS, PLAYER_TOOL_DIRS, RUNTIME_DIRS,
+  PLAYER_TEST_VIEW,
   GITHUB_REPO, releaseTag,
 } from './package.mjs';
 import { diffBases, manifestText, readBase } from './package-update.mjs';
@@ -121,7 +122,8 @@ export function packageMarisa({ root = ROOT, keepStage = false, vanillaBase = nu
       if (kind === 'replacement' && base) {
         const next = new Map(checked.staged.map((rel) => [rel, digestFile(path.join(stage, rel))]));
         const delta = new Set(diffBases(next, [base], { removable: () => false }).ship);
-        for (const rel of ['MANIFEST.json', 'MARISA-PACKAGE.md', 'MOD-PACKAGE.json']) delta.add(rel);
+        // Vanilla player releases omit dev pages even when a source-tree base contains an identical HTML viewer.
+        for (const rel of ['MANIFEST.json', 'MARISA-PACKAGE.md', 'MOD-PACKAGE.json', ...PLAYER_TEST_VIEW]) delta.add(rel);
         for (const rel of checked.staged) if (!delta.has(rel)) fs.rmSync(path.join(stage, rel));
         pruneEmptyDirectories(stage);
         shippedFiles = checked.staged.filter((rel) => delta.has(rel));
