@@ -21,12 +21,12 @@
       "bytes": 6876
     },
     "sim/index.js": {
-      "sha256": "299b3222d5a72d4908f7e026639c52ea027c2a3018f46dac7a9271dc51deaa08",
-      "bytes": 290993
+      "sha256": "796ab4de8b300c55afb60c60f5efff94fc84c45a3faf98dd3195f86108ec11da",
+      "bytes": 291948
     },
     "test/guard.test.js": {
-      "sha256": "96ea8210d0fb200291c3aec63c5c7183a82e9c58048d51fbd7b2826c58eac0ed",
-      "bytes": 8791
+      "sha256": "bb6b16414f3b30ea69b5e33ec852b42a908f151c98dae5cae0d8bd229ac91474",
+      "bytes": 14850
     }
   },
   "spine": {}

@@ -17,6 +17,8 @@ const MAKOTO = 'chess_x_marisa_makoto';
 const ANCHOR = 'token_x_marisa_10068_kalts2_mtship';
 const approx = (a, b, msg) => assert.ok(Math.abs(a - b) < 1e-6 * Math.max(1, Math.abs(b)), `${msg}: ${a} != ${b}`);
 const tags = (c, tag) => c.dmg?.tags?.includes(tag);
+const LIFTOFF = 1024; // shared/constants.js UF.LIFTOFF, the snapshot wire flag (not UF.FLYING).
+const hasLiftoff = (h, u) => !!(h.snapshot().units.find(t => t[0] === u.id)?.[7] & LIFTOFF);
 
 function field({ id = AMIYA, form = 'a', skill = 0, units = [], enemies = {}, ...opts } = {}) {
   return makeBattle({
@@ -104,6 +106,7 @@ test('Kun activates through the real Egir opening chain, revives each victim onc
   const deaths = h.hooksOf('death').filter(c => c.reason === 'killed');
   assert.equal(deaths.length, 3, 'real devour killed exactly the three marked operators');
   assert.ok(u.s.flags.liftoff && u.s.flags.blockFly && u.profile.canHitFly);
+  assert.ok(hasLiftoff(h, u), 'Kun takeoff reaches the renderer through the common wire flag');
   for (const uid of [2, 3, 4]) {
     assert.ok(h.unit(uid).alive);
     assert.equal(h.hooksOf('deploy').filter(c => c.unit === h.unit(uid)).length, 2, 'one opening deploy and one revive');
@@ -111,6 +114,42 @@ test('Kun activates through the real Egir opening chain, revives each victim onc
   const fly = h.spawn('fly', { pos: [10, 4.2] }); h.run(3);
   assert.equal(fly.blockedBy, u);
   assert.ok(h.hooksOf('damaged').some(c => c.source === u && c.target === fly), 'air unit actually attacked');
+  clean(h);
+});
+
+test('liftoff wire flag covers skill flight, deployment flight and landing without Kun', () => {
+  for (const id of ['chess_x_marisa_aglna2', 'chess_char_2_13']) {
+    const h = field({ id, skill: 0 }); h.step(); const u = h.unit(1);
+    if (!u.skill.active) cast(u);
+    assert.ok(u.s.flags.liftoff, `${id}: real skill takes off`);
+    assert.ok(hasLiftoff(h, u), `${id}: common flag is set without a band`);
+    u.skill.end('test');
+    assert.ok(!u.s.flags.liftoff && !hasLiftoff(h, u), `${id}: landing clears the flag`);
+    clean(h);
+  }
+  const h = field({ id: 'chess_x_marisa_kalts2' }); h.step();
+  assert.ok(hasLiftoff(h, h.unit(1)), 'Kaltsit talent flight also carries the common flag'); clean(h);
+});
+
+for (const layers of [0, 154]) test(`reported bent Egir chain at ${layers} layers preserves original Kun revival`, () => {
+  const units = [
+    { uid: 1, diy: { slot: 6, charId: 'char_003_kalts', skillIndex: 0 }, row: 5, col: 4, dir: 'DOWN', abs: true },
+    ...[
+      ['chess_char_4_12_a', 4, 4, 'DOWN'], ['chess_char_1_04_a', 3, 4, 'DOWN'],
+      ['chess_char_3_05_a', 2, 4, 'RIGHT'], ['chess_char_6_16_a', 2, 5, 'RIGHT'],
+      [`${AMIYA}_a`, 2, 6, 'UP'], ['chess_char_4_21_a', 3, 6, 'LEFT'], ['chess_char_3_21_a', 4, 6, 'LEFT'],
+    ].map(([chessId, row, col, dir], i) => ({ uid: i + 2, chessId, row, col, dir, abs: true })),
+  ];
+  const h = makeBattle({ kind: 'boss', data: new DataSource(MOD), units, autoFinish: false, captureNoisy: true,
+    bandId: 'band_x_marisa_kun', bonds: { egirShip: { active: true, count: 3, tier: 1, layers },
+      bond_x_marisa_rhodeShip: { active: true, count: 3, tier: 2, layers: 28 } },
+  });
+  h.step();
+  assert.equal(h.hooksOf('death').filter(c => c.reason === 'killed').length, layers ? 2 : 3);
+  assert.equal(h.hooksOf('deploy').filter(c => !c.initial).length, layers ? 0 : 3);
+  assert.deepEqual(h.allies().filter(u => u.s.flags.liftoff).map(u => u.uid), layers ? [] : [2]);
+  assert.ok(!h.hooksOf('damaged').some(c => c.target === h.unit(6) && tags(c, 'bond:egir:devour')),
+    'chain stops at non-Egir Lumen and never reaches Amiya');
   clean(h);
 });
 
@@ -125,6 +164,74 @@ test('Rhodes feedback is bounded with an injured incantation medic and a real ad
   assert.equal(feedback.length, 1, 'one outer strike, no recursive extra strike');
   assert.ok(h.hooksOf('heal').some(c => c.source === u && c.opts?.tags?.includes('incantation')), 'incantation feedback really happened');
   h.run(5); clean(h);
+});
+
+for (const [label, mods, cultivate] of [
+  ['ATK +50%', { atkPct: 0.5 }, 1],
+  ['ATK +100%', { atkPct: 1 }, 1],
+  ['ATK +200%', { atkPct: 2 }, 1],
+  ['final multiplier and cultivation', { atkPct: 1, atkMul: 1.5 }, 0.8],
+]) test(`Rhodes overflow is 1:1 and capped at actual own ATK: ${label}`, () => {
+  const h = field({ id: 'chess_char_3_21', bonds: { bond_x_marisa_rhodeShip: { active: true, count: 2, tier: 2, layers: 100 } },
+    units: [{ uid: 2, chessId: `${AMIYA}_a`, row: 11, col: 4 },
+      { uid: 3, chessId: 'chess_x_marisa_kalts2_a', row: 10, col: 5 }],
+  });
+  h.step(); const u = h.unit(1);
+  u.cultMul = { hp: 1, atk: cultivate, def: 1 };
+  h.b.addBuff(u, { key: 'test:atk', mods, duration: 100 });
+  const own = u.s.atk;
+  h.run(0.6);
+  // At full HP the first pulse overflows in full. The aura heals 100 layers × healingTakenMul.
+  approx(u.s.atk - own, 100 * u.s.healingTakenMul, 'overflow converts to actual ATK 1:1');
+  h.run(8);
+  approx(u.s.atk - own, own, 'actual bonus is capped at 100% of own ATK');
+  h.b.removeBuff(u, 'test:atk'); h.step();
+  const afterSkill = u.base.atk * cultivate;
+  approx(u.s.atk - afterSkill, afterSkill, 'losing a skill buff lowers the cap without waiting for another heal');
+  h.b.addBuff(u, { key: 'test:atk', mods, duration: 100 });
+  h.b.addBuff(u, { key: 'test:noheal', flags: { noHeal: true }, duration: 10 });
+  h.run(2.2);
+  approx(u.s.atk, own, 'bonus expires without another overflow');
+  clean(h);
+});
+
+test('Rhodes cap drops before an attack on the natural skill-ending tick', () => {
+  const h = field({ id: 'chess_char_3_21', skill: 2,
+    bonds: { bond_x_marisa_rhodeShip: { active: true, count: 2, tier: 2, layers: 1000 } },
+    units: [{ uid: 2, chessId: `${AMIYA}_a`, row: 11, col: 4 },
+      { uid: 3, chessId: 'chess_x_marisa_kalts2_a', row: 10, col: 5 }],
+  });
+  h.step(); const u = h.unit(1); cast(u); h.run(0.6);
+  h.spawn('dummy', { pos: [10, 5] }); h.step();
+  u.skill.timeLeft = h.b.dt; u.atkCd = 0;
+  let attackAtk = null;
+  h.b.on('beforeAttack', ({ attacker }) => { if (attacker === u) attackAtk = u.s.atk; }, { priority: -2000 });
+  h.step();
+  assert.equal(u.skill.active, false, 'real S3 ends naturally in the ally phase');
+  assert.notEqual(attackAtk, null, 'an ordinary attack follows the skill ending in the same tick');
+  approx(attackAtk, u.base.atk * 2, 'same-tick attack uses the reduced Rhodes cap');
+  approx(u.s.atk, u.base.atk * 2, 'end-of-tick stats use the reduced Rhodes cap');
+  clean(h);
+});
+
+test('Rhodes cap drops when a later-added ATK buff expires before a same-tick attack', () => {
+  const h = field({ id: 'chess_char_3_21', skill: 2,
+    bonds: { bond_x_marisa_rhodeShip: { active: true, count: 2, tier: 2, layers: 1000 } },
+    units: [{ uid: 2, chessId: `${AMIYA}_a`, row: 11, col: 4 },
+      { uid: 3, chessId: 'chess_x_marisa_kalts2_a', row: 10, col: 5 }],
+  });
+  h.step(); const u = h.unit(1); h.run(0.6);
+  h.b.addBuff(u, { key: 'test:late-atk', mods: { atkPct: 2 }, duration: 100 }); h.run(0.6);
+  h.spawn('dummy', { pos: [10, 5] }); h.step();
+  u.findBuff('test:late-atk').timeLeft = h.b.dt; u.atkCd = 0;
+  let attackAtk = null;
+  h.b.on('beforeAttack', ({ attacker }) => { if (attacker === u) attackAtk = u.s.atk; }, { priority: -2000 });
+  h.step();
+  assert.equal(u.findBuff('test:late-atk'), null, 'later buff expires after the earlier Rhodes onTick');
+  assert.notEqual(attackAtk, null, 'an ordinary attack follows the buff expiry in the same tick');
+  approx(attackAtk, u.base.atk * 2, 'same-tick attack uses the reduced Rhodes cap');
+  approx(u.s.atk, u.base.atk * 2, 'end-of-tick stats use the reduced Rhodes cap');
+  clean(h);
 });
 
 test('all four kits plus placed anchor stay deterministic across twelve seeds and three field kinds', () => {

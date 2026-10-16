@@ -21,6 +21,8 @@ for(const [id,alias]of Object.entries(aliases))if(id.startsWith('char_')&&art.ch
  art.chars[alias]={...art.chars[id]};
  if(skins[id])skins[alias]={...skins[id],charId:alias};
 }
+// New strategy ids are namespaced by build-profile, while the borrowed art keeps its original key.
+for(const [id,alias]of Object.entries(aliases))if(id.startsWith('band_')&&art.bands[id])art.bands[alias]=art.bands[id];
 for(const key of ['chars','enemies','tokens','bonds','items','bands','skills','modules','ui'])art.stats[key]=Object.keys(art[key]||{}).length;
 for(const [key,tree]of Object.entries({voiceChars:'voice',voiceJpChars:'voiceJp',voiceEnChars:'voiceEn',voiceKrChars:'voiceKr',voiceNativeChars:'voiceNative'}))art.stats[key]=Object.keys(art.audio?.[tree]||{}).length;
 fs.writeFileSync(path.join(game,'data/assets.json'),JSON.stringify(art));

@@ -2,10 +2,13 @@
 
 四名干员、罗德岛、鲲、自选候选、皮肤与单场回放已迁入 0.3.0 原生插件系统。用户已完成本机游玩测试。
 
-- [下载完整包、兼容替换包、插件及 SHA256](https://github.com/Ruyl114514/marisa-s-mod/releases/tag/marisa-0.3.0-20261016)
+- [下载修补包 1：用于此前完整包的增量更新](https://github.com/Ruyl114514/marisa-s-mod/releases/tag/marisa-0.3.0-20261016-hotfix1)
+- [首次安装：此前的完整包及附件](https://github.com/Ruyl114514/marisa-s-mod/releases/tag/marisa-0.3.0-20261016)
 - [安装、管理器入口、兼容范围与开发说明](Stronghold-Protocol/docs/MARISA-0.3.0.md)
 
 Windows 完整包双击 scripts/start-marisa.cmd。创建房间后点击顶部“插件”，开启“魔理沙追加 MOD”并应用设置。再次启动会复用运行中的服务，避免 3000 端口冲突。插件单独安装需要本版兼容补丁；完整包和替换包已包含补丁。
+
+修补包 1 修复罗德岛攻击加成被再次放大及上限同帧回落的问题，恢复鲲原图映射。它只包含相对此前 Marisa 0.3.0 完整包改变的必要文件及说明：停止服务后合并覆盖原安装，重启、强制刷新并新建对局。本次不重新打包完整包、兼容替换包或单独插件包。
 
 从源码运行：进入 Stronghold-Protocol，执行 npm ci，将 mods/marisa-native/bundle/marisa 复制到 plugins/marisa，再运行 scripts/start-marisa.cmd。首次素材准备参照工程 README 与 MOD 安装说明。
 

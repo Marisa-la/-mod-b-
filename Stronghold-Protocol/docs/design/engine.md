@@ -335,3 +335,7 @@ DSL plugin budget and attribution. Vanilla registrations remain empty; no offici
 
 The same SDK and scriptGuard apply inside SES in sandbox mode (DESIGN §32.11); the evaluator consumes verified
 script descriptors. SDK-owned results are frozen copies; live Battle/Unit objects are not hardened.
+
+For the optional Marisa plugin, Rhodes overflow adds actual ATK 1:1, capped at 100% of ATK excluding its own bonus.
+The cap follows changing skill stats, including same-tick attacks after a skill or a later ATK buff expires; expiry
+remains two seconds after the last overflow. See [MARISA-0.3.0.md](../MARISA-0.3.0.md).

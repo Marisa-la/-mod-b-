@@ -80,8 +80,8 @@
 //                      dying only below damage.js's 0.5 floor). Only the outermost strike of a chain fires. tier 2
 //                      (2 distinct members on the field): a whole-field heal aura
 //                      every interval(L) = 0.5 + 4.5·(1 − sqrt(L/100)) s — 5 s at L 0, 0.5 s at L ≥ 100 — of L HP per
-//                      operator; the OVERHEAL (the heal minus the missing HP) becomes flat ATK 1:1 (`atkFlat`, additive
-//                      with every other 直接乘算/加算), accumulating per operator up to 100 % of its own ATK and dropped 2 s
+//                      operator; the OVERHEAL (the heal minus the missing HP) becomes actual ATK 1:1 (normalized
+//                      `atkFinal`), accumulating per operator up to 100 % of its own ATK and dropped 2 s
 //                      after the last overflow. No caster heals the aura, so nothing gets its heal credit [ASSUMED].
 //   远见 / 奇迹 / 投资人 / 调和 have no battle effect (prep side, membership in support/index.js).
 //
@@ -474,25 +474,37 @@ function rhodeAuraOn(battle, st) {
  * heal — L × the target's healingTakenMul (clause 2's bonus included), or whatever a later `heal` handler made of it
  * (captured by the clause 4 hook at priority −1000, 明椒's talent included). It is 0 while the unit is missing HP.
  */
+function rhodeAtkBasis(u) {
+  // Exclude this bonus from its own cap. atkFlat would multiply the overflow by every ATK% skill again;
+  // atkFinal bypasses ATK%, and dividing by the final multipliers preserves the promised actual ATK 1:1.
+  const { add: m, mul } = aggregateMods(u.buffs.filter((b) => b.key !== KEY.rhodeAtk));
+  const finalMul = (mul.atkMul ?? 1) * (u.cultMul?.atk ?? 1);
+  const b0 = u.base;
+  const own = Math.max(0, fin(((b0.atk + (m.atkFlat ?? 0)) * Math.max(0, 1 + (m.atkPct ?? 0)) + (m.atkFinal ?? 0)) * finalMul, fin(b0.atk, 0)));
+  return { own, finalMul };
+}
+
+function rhodeAtkTick({ unit: u, buff }) {
+  const { own, finalMul } = rhodeAtkBasis(u);
+  // Skill endings and expiring buffs can lower the cap between aura pulses. Do not refresh the expiry here.
+  buff.data.amount = Math.min(buff.data.amount, own * buff.data.capRatio);
+  const value = finalMul > 0 ? buff.data.amount / finalMul : 0;
+  if (buff.mods.atkFinal !== value) { buff.mods.atkFinal = value; u.markDirty(); }
+}
+
 function rhodeOverflowAtk(battle, u, overflow, bb, decay) {
   const cur = u.findBuff(KEY.rhodeAtk);
-  const prev = cur ? num(cur.mods && cur.mods.atkFlat, 0) : 0;
-  // 自身攻击力 = this operator's aggregated ATK with THIS bond's own buff excluded (the same `filter(b => b.key !== key)`
-  // idiom the kits use: op-chen2 / op-radian / skadi2 / cetsyr). `u.s.atk − prev` is NOT equivalent: units.js _recalc
-  // computes atk = (base + ΣatkFlat)·(1 + ΣatkPct) + ΣatkFinal, so this buff's atkFlat enters MULTIPLIED by
-  // (1 + ΣatkPct). Subtracting the raw `prev` therefore over-states 自身攻击力 whenever the operator carries any 攻击力%
-  // buff — and because the result feeds back into the cap, the bonus crept up with every pulse instead of stopping at the
-  // cap (measured: +50 % ATK ⇒ atkFlat reached 1500 where the cap is 750; +200 % ⇒ 4800 vs 1500). Aggregate without the
-  // buff instead, then apply the very same atk formula.
-  const { add: m } = aggregateMods(u.buffs.filter((b) => b.key !== KEY.rhodeAtk));
-  const b0 = u.base;
-  const own = Math.max(0, fin(((b0.atk + (m.atkFlat ?? 0)) * Math.max(0, 1 + (m.atkPct ?? 0)) + (m.atkFinal ?? 0)) * (m.atkMul ?? 1), fin(b0.atk, 0)));
-  const cap = Math.max(0, num(bb.aura_atk_cap_ratio, 1)) * own;
+  const { own, finalMul } = rhodeAtkBasis(u);
+  if (!(finalMul > 0)) { battle.removeBuff(u, KEY.rhodeAtk); return 0; }
+  const prev = cur ? num(cur.data.amount, 0) : 0;
+  const capRatio = Math.max(0, num(bb.aura_atk_cap_ratio, 1));
+  const cap = capRatio * own;
   const next = Math.min(cap, prev + overflow);
   if (!(next > 0)) return 0;
   // one buff per operator, replaced by every overflow: its own `duration` is the "2秒内不再溢出则消失" timer, and reading
-  // the total back from its mods means an expiry (or a death, which drops non-persistent buffs) starts from 0 again
-  battle.addBuff(u, { key: KEY.rhodeAtk, duration: decay, refresh: 'replace', mods: { atkFlat: next } });
+  // the total back from its data means an expiry (or a death, which drops non-persistent buffs) starts from 0 again
+  battle.addBuff(u, { key: KEY.rhodeAtk, duration: decay, refresh: 'replace', mods: { atkFinal: next / finalMul },
+    data: { amount: next, capRatio }, onTick: rhodeAtkTick });
   return next;
 }
 
@@ -875,6 +887,16 @@ export function install(battle) {
       c.n = n;
     }, { priority: -60 });
     const rhodePids = new Set(rhode.map((st) => st.pid));
+    const refreshOverflow = (u) => {
+      if (!u || !rhodePids.has(u.ownerId)) return;
+      const buff = u.findBuff(KEY.rhodeAtk);
+      if (buff) rhodeAtkTick({ unit: u, buff });
+    };
+    // Skills and later-added buffs can expire after this buff's own onTick. Clamp before damage reads ATK,
+    // and at the end of the tick so a unit that did not attack also exports the current cap to the snapshot.
+    battle.on('skillEnd', ({ unit }) => refreshOverflow(unit), { priority: -1000 });
+    battle.on('beforeAttack', ({ attacker }) => refreshOverflow(attacker), { priority: -1000 });
+    battle.on('tick', () => { for (const st of rhode) for (const u of st.ops) refreshOverflow(u); }, { priority: -1000 });
     installRhodeDotCap(battle, (u) => !!(u && u.side === 'ally' && u.kind === 'op' && rhodePids.has(u.ownerId)), num(rhode[0].bb[ID.rhode].dot_duration_cap, 5));
     // clause 4: the engine's heal event (fired before the HP is written) sees the final amount
     battle.on('heal', (c) => {

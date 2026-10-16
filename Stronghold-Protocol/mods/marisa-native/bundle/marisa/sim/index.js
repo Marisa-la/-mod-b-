@@ -1,7 +1,7 @@
-// marisa-s-mod/Stronghold-Protocol/shared/i18nPacks.js
+// mods/marisa-native/source/shared/i18nPacks.js
 var SOURCE_LANG = "zh";
 
-// marisa-s-mod/Stronghold-Protocol/shared/i18n.js
+// mods/marisa-native/source/shared/i18n.js
 var SOURCE_META = Object.freeze({
   code: SOURCE_LANG,
   name: "\u4E2D\u6587",
@@ -22,7 +22,7 @@ var SOURCE_META = Object.freeze({
 var PLURAL_CATEGORIES = Object.freeze(["zero", "one", "two", "few", "many", "other"]);
 var N_ = (s) => s;
 
-// marisa-s-mod/Stronghold-Protocol/shared/constants.js
+// mods/marisa-native/source/shared/constants.js
 var APP_VERSION = "0.3.0";
 var DEV_BUILD = /-dev$/.test(APP_VERSION);
 var PLUGIN_API = Object.freeze({ current: 1, min: 1 });
@@ -249,7 +249,7 @@ var emoteMap = (pick) => Object.freeze(Object.assign(/* @__PURE__ */ Object.crea
 var EMOTE_THEME = emoteMap((e) => e.themeId);
 var EMOTE_LABEL = emoteMap((e) => e.label);
 
-// marisa-s-mod/Stronghold-Protocol/server/sim/constants.js
+// mods/marisa-native/source/server/sim/constants.js
 var TICK = 1 / 30;
 var ROWS = GEO.ROWS;
 var COLS = GEO.COLS;
@@ -307,7 +307,7 @@ var BOSS_ROW_OFFSET = -7;
 var DIRECT_BONUS_STACKING = "add";
 var CHAIN_RADIUS = 1.7;
 
-// marisa-s-mod/Stronghold-Protocol/server/sim/dir.js
+// mods/marisa-native/source/server/sim/dir.js
 var DIRS = Object.freeze(["UP", "RIGHT", "DOWN", "LEFT"]);
 var DEFAULT_DIR = "RIGHT";
 var DIR_VEC = Object.freeze({
@@ -364,7 +364,7 @@ function frontOf(r, c, d, k = 1) {
 var localOrder = (dRow, dCol, d) => toLocal(dRow, dCol, d);
 var localBefore = (a, b) => !b || a[0] < b[0] || a[0] === b[0] && a[1] < b[1];
 
-// marisa-s-mod/Stronghold-Protocol/server/sim/detmath.js
+// mods/marisa-native/source/server/sim/detmath.js
 import { math } from "sp:sdk@1";
 var hypot = math.hypot;
 var roundHalfEven = math.roundHalfEven;
@@ -373,7 +373,7 @@ var sin = math.sin;
 var cos = math.cos;
 var atan2 = math.atan2;
 
-// marisa-s-mod/Stronghold-Protocol/server/sim/body.js
+// mods/marisa-native/source/server/sim/body.js
 function hitRect(u) {
   const a = u && u.hitArea;
   if (!a) return null;
@@ -459,7 +459,7 @@ function bodyDist(u, x, y) {
   return hypot(dx, dy);
 }
 
-// marisa-s-mod/Stronghold-Protocol/shared/potential.js
+// mods/marisa-native/source/shared/potential.js
 var POTENTIAL_MIN = 1;
 var POTENTIAL_MAX = 6;
 var FULL_RANK = POTENTIAL_MAX - 1;
@@ -530,7 +530,7 @@ function atPotential(rec, potential) {
   return isPotential(potential) && potential < POTENTIAL_MAX ? atRank(rec, potential - 1) : rec;
 }
 
-// marisa-s-mod/Stronghold-Protocol/shared/loadoutRecord.js
+// mods/marisa-native/source/shared/loadoutRecord.js
 function extendedGrid(grid, extend = 0) {
   const out = [];
   const seen = /* @__PURE__ */ new Set();
@@ -552,7 +552,7 @@ function extendedGrid(grid, extend = 0) {
   return out;
 }
 
-// marisa-s-mod/Stronghold-Protocol/server/sim/targeting.js
+// mods/marisa-native/source/server/sim/targeting.js
 function absoluteRangeKeys(grid, r, c, dir, extend = 0) {
   const keys = [];
   const seen = /* @__PURE__ */ new Set();
@@ -631,7 +631,7 @@ function sortEnemyTargets(battle, attacker, cands, priority) {
   return cands;
 }
 
-// marisa-s-mod/Stronghold-Protocol/shared/standIn.js
+// mods/marisa-native/source/shared/standIn.js
 var IDENTITY_FIELDS = Object.freeze([
   "chessId",
   "baseId",
@@ -655,10 +655,10 @@ var IDENTITY_FIELDS = Object.freeze([
   "diyRequirement"
 ]);
 
-// marisa-s-mod/Stronghold-Protocol/shared/diy.js
+// mods/marisa-native/source/shared/diy.js
 var DIY_TIERS = Object.freeze([5, 6]);
 
-// marisa-s-mod/Stronghold-Protocol/server/sim/simdata.js
+// mods/marisa-native/source/server/sim/simdata.js
 function flattenBlackboard(bb) {
   if (!bb) return {};
   if (!Array.isArray(bb)) return { ...bb };
@@ -815,7 +815,7 @@ function immuneSet(v, extra = null) {
   return out;
 }
 
-// marisa-s-mod/Stronghold-Protocol/server/sim/damage.js
+// mods/marisa-native/source/server/sim/damage.js
 var clamp01 = (v) => v < 0 ? 0 : v > 1 ? 1 : v;
 function hasHp(u) {
   return !!u && u.alive && (u.bossPool ? u.bossPool.hp > 0 : u.hp > 0);
@@ -865,7 +865,7 @@ function mitigate(amount, type, target, ign = {}) {
   return amount;
 }
 
-// marisa-s-mod/Stronghold-Protocol/shared/plugins/limits.js
+// mods/marisa-native/source/shared/plugins/limits.js
 var PLUGIN_GAIN_COUNT_KEYS = Object.freeze([
   "global_special_choice_gain_equip",
   "single_special_choice_gain_bond_chess"
@@ -878,7 +878,7 @@ function dataBound(officialMax) {
   return Math.max(PLUGIN_BOUND_FACTOR * m, PLUGIN_BOUND_FLOOR);
 }
 
-// marisa-s-mod/Stronghold-Protocol/shared/plugins/textPatterns.js
+// mods/marisa-native/source/shared/plugins/textPatterns.js
 var TEXT_COUNT_PATTERNS = Object.freeze([
   { id: "burst", re: /(\d+)连发/ },
   { id: "attack-times", re: /攻击(\d+)次/ },
@@ -896,7 +896,7 @@ var TEXT_COUNT_PATTERNS = Object.freeze([
   { id: "exist-n", re: /存在\s*(\d+)\s*名/ }
 ]);
 
-// marisa-s-mod/Stronghold-Protocol/shared/plugins/officialBounds.js
+// mods/marisa-native/source/shared/plugins/officialBounds.js
 var STEP_TICK = 1 / 30;
 var BOUND_TABLES = Object.freeze([
   "chess",
@@ -922,7 +922,7 @@ function officialTextMax(patternId) {
   return map && map.has(patternId) ? map.get(patternId) : null;
 }
 
-// marisa-s-mod/Stronghold-Protocol/shared/plugins/textNumber.js
+// mods/marisa-native/source/shared/plugins/textNumber.js
 var CN_DIGIT = Object.freeze({
   \u4E00: 1,
   \u4E8C: 2,
@@ -967,7 +967,7 @@ function textCount(text, re, fallback, patternId) {
   return Math.min(cap, safe);
 }
 
-// marisa-s-mod/Stronghold-Protocol/server/sim/content/generic.js
+// mods/marisa-native/source/server/sim/content/generic.js
 var num2 = (v) => typeof v === "number" && Number.isFinite(v) ? v : typeof v === "string" && v !== "" && Number.isFinite(+v) ? +v : void 0;
 function getter(bb) {
   return (k) => {
@@ -1312,7 +1312,7 @@ function genericKit(bb, chess, def = null) {
   return kit;
 }
 
-// marisa-s-mod/Stronghold-Protocol/server/sim/professions.js
+// mods/marisa-native/source/server/sim/professions.js
 var P = (o) => Object.freeze(o);
 var num3 = (v, d) => typeof v === "number" && Number.isFinite(v) ? v : d;
 var PROFESSION_DEFAULTS = Object.freeze({
@@ -1820,7 +1820,7 @@ var SUB = Object.freeze({
 });
 var KNOWN_SUBPROFESSIONS = Object.freeze(Object.keys(SUB));
 
-// marisa-s-mod/Stronghold-Protocol/server/sim/content/tokens.js
+// mods/marisa-native/source/server/sim/content/tokens.js
 var num4 = (v, d = 0) => typeof v === "number" && Number.isFinite(v) ? v : typeof v === "string" && v.trim() !== "" && Number.isFinite(+v) ? +v : d;
 var GRID_3X3 = Object.freeze([[1, -1], [1, 0], [1, 1], [0, -1], [0, 0], [0, 1], [-1, -1], [-1, 0], [-1, 1]]);
 var GRID_PLUS = Object.freeze([[1, 0], [0, -1], [0, 0], [0, 1], [-1, 0]]);
@@ -2976,10 +2976,10 @@ var SKILL_SUMMON_PER_CAST = Object.freeze({ [TOKEN_IDS.rosmonGear]: 2, [TOKEN_ID
 var SKILL_SUMMON_UNCAPPED = /* @__PURE__ */ new Set([TOKEN_IDS.goldenOath]);
 var TACTICIAN_TOKENS = /* @__PURE__ */ new Set([TOKEN_IDS.wolfPack, TOKEN_IDS.manifold]);
 
-// marisa-s-mod/Stronghold-Protocol/server/data.js
+// mods/marisa-native/source/server/data.js
 var getData = () => ({});
 
-// marisa-s-mod/Stronghold-Protocol/server/sim/content/support/index.js
+// mods/marisa-native/source/server/sim/content/support/index.js
 var num5 = (v, d = 0) => typeof v === "number" && Number.isFinite(v) ? v : typeof v === "string" && v.trim() !== "" && Number.isFinite(+v) ? +v : d;
 var own2 = (o, k) => o && typeof o === "object" && typeof k === "string" && Object.prototype.hasOwnProperty.call(o, k) ? o[k] : null;
 var QUIET = Object.freeze({ warn() {
@@ -3219,7 +3219,7 @@ function gainLayers(battle, { playerId, bonds, n, requireActive = true, source =
   return total;
 }
 
-// marisa-s-mod/Stronghold-Protocol/server/sim/content/items/battle.js
+// mods/marisa-native/source/server/sim/content/items/battle.js
 var PRIO_REVIVE = -100;
 var PRIO_UNDYING_HELD = PRIO_REVIVE + 1;
 var PRIO_RESPAWN = 13;
@@ -3255,7 +3255,7 @@ function addShieldLayer(battle, target, key, cap = 1) {
   return true;
 }
 
-// marisa-s-mod/Stronghold-Protocol/server/sim/content/kits/shared/mod-tier3.js
+// mods/marisa-native/source/server/sim/content/kits/shared/mod-tier3.js
 var MASK_SWITCH = 0.5;
 var num6 = (v, d = 0) => typeof v === "number" && Number.isFinite(v) ? v : d;
 var defOf = (chess, def) => def ?? normalizeChess(chess);
@@ -3285,7 +3285,7 @@ function enemiesOn(battle, unit, keys, n = 0, profile = null) {
   return n > 0 && list.length > n ? list.slice(0, n) : list;
 }
 
-// marisa-s-mod/Stronghold-Protocol/server/sim/content/kits/ops/op-makoto.js
+// mods/marisa-native/source/server/sim/content/kits/ops/op-makoto.js
 var op_makoto_default = {
   // ---------------------------------------------------------------------------------------------------------------
   // 结城理 (dollkeeper, 阶 III) — 不羁之力's <替身> state carries one of his two 人格面具, the one the state was entered
@@ -3713,7 +3713,7 @@ var op_makoto_default = {
   }
 };
 
-// marisa-s-mod/Stronghold-Protocol/server/sim/content/kits/ops/op-amiya3.js
+// mods/marisa-native/source/server/sim/content/kits/ops/op-amiya3.js
 var op_amiya3_default = {
   // ---------------------------------------------------------------------------------------------------------------
   // 阿米娅 (医疗形态) (咒愈师 incantationmedic, 阶 III) — the branch itself is already implemented (professions.js
@@ -3888,7 +3888,7 @@ var op_amiya3_default = {
   }
 };
 
-// marisa-s-mod/Stronghold-Protocol/server/sim/content/kits/shared/tier1.js
+// mods/marisa-native/source/server/sim/content/kits/shared/tier1.js
 var num7 = (v, d = 0) => typeof v === "number" && Number.isFinite(v) ? v : typeof v === "string" && v.trim() !== "" && Number.isFinite(+v) ? +v : d;
 function talentAt(chess, i) {
   const list = (chess?.talents ?? []).filter((t) => t && t.index !== -1);
@@ -3933,7 +3933,7 @@ function batMod(v, chess = null, desc = "") {
   return Math.max(-0.9, x / bat);
 }
 
-// marisa-s-mod/Stronghold-Protocol/server/sim/buffs.js
+// mods/marisa-native/source/server/sim/buffs.js
 function resistPalsyDecay({ battle, unit }) {
   const p = unit.findBuff("palsy");
   if (!p) return;
@@ -4168,7 +4168,7 @@ function aggregateMods(buffs) {
   return { add, mul, flags, shield, permRangeExtend };
 }
 
-// marisa-s-mod/Stronghold-Protocol/server/sim/content/kits/ops/mod-aglna2.js
+// mods/marisa-native/source/server/sim/content/kits/ops/mod-aglna2.js
 var S1 = "skchr_aglna2_1";
 var S2 = "skchr_aglna2_2";
 var S3 = "skchr_aglna2_3";
@@ -4485,7 +4485,7 @@ var mod_aglna2_default = {
   }
 };
 
-// marisa-s-mod/Stronghold-Protocol/server/sim/content/kits/ops/mod-kalts2.js
+// mods/marisa-native/source/server/sim/content/kits/ops/mod-kalts2.js
 var S12 = "skchr_kalts2_1";
 var S22 = "skchr_kalts2_2";
 var S32 = "skchr_kalts2_3";
@@ -4745,7 +4745,7 @@ var mod_kalts2_default = {
   }
 };
 
-// marisa-s-mod/Stronghold-Protocol/server/sim/content/bonds/addon/battle.js
+// mods/marisa-native/source/server/sim/content/bonds/addon/battle.js
 var ID = Object.freeze({ rhode: "bond_x_marisa_rhodeShip" });
 var KEY = Object.freeze({
   preci: "bond:preciShip",
@@ -5011,16 +5011,42 @@ function rhodeAuraOn(battle, st) {
   for (const m of st.members[ID.rhode]) if (onField(m)) seen.add(baseChessId(m));
   return seen.size >= 2;
 }
+function rhodeAtkBasis(u) {
+  const { add: m, mul } = aggregateMods(u.buffs.filter((b) => b.key !== KEY.rhodeAtk));
+  const finalMul = (mul.atkMul ?? 1) * (u.cultMul?.atk ?? 1);
+  const b0 = u.base;
+  const own3 = Math.max(0, fin(((b0.atk + (m.atkFlat ?? 0)) * Math.max(0, 1 + (m.atkPct ?? 0)) + (m.atkFinal ?? 0)) * finalMul, fin(b0.atk, 0)));
+  return { own: own3, finalMul };
+}
+function rhodeAtkTick({ unit: u, buff }) {
+  const { own: own3, finalMul } = rhodeAtkBasis(u);
+  buff.data.amount = Math.min(buff.data.amount, own3 * buff.data.capRatio);
+  const value = finalMul > 0 ? buff.data.amount / finalMul : 0;
+  if (buff.mods.atkFinal !== value) {
+    buff.mods.atkFinal = value;
+    u.markDirty();
+  }
+}
 function rhodeOverflowAtk(battle, u, overflow, bb, decay) {
   const cur = u.findBuff(KEY.rhodeAtk);
-  const prev = cur ? num5(cur.mods && cur.mods.atkFlat, 0) : 0;
-  const { add: m } = aggregateMods(u.buffs.filter((b) => b.key !== KEY.rhodeAtk));
-  const b0 = u.base;
-  const own3 = Math.max(0, fin(((b0.atk + (m.atkFlat ?? 0)) * Math.max(0, 1 + (m.atkPct ?? 0)) + (m.atkFinal ?? 0)) * (m.atkMul ?? 1), fin(b0.atk, 0)));
-  const cap = Math.max(0, num5(bb.aura_atk_cap_ratio, 1)) * own3;
+  const { own: own3, finalMul } = rhodeAtkBasis(u);
+  if (!(finalMul > 0)) {
+    battle.removeBuff(u, KEY.rhodeAtk);
+    return 0;
+  }
+  const prev = cur ? num5(cur.data.amount, 0) : 0;
+  const capRatio = Math.max(0, num5(bb.aura_atk_cap_ratio, 1));
+  const cap = capRatio * own3;
   const next = Math.min(cap, prev + overflow);
   if (!(next > 0)) return 0;
-  battle.addBuff(u, { key: KEY.rhodeAtk, duration: decay, refresh: "replace", mods: { atkFlat: next } });
+  battle.addBuff(u, {
+    key: KEY.rhodeAtk,
+    duration: decay,
+    refresh: "replace",
+    mods: { atkFinal: next / finalMul },
+    data: { amount: next, capRatio },
+    onTick: rhodeAtkTick
+  });
   return next;
 }
 var rhodeHealRefused = (u) => !!(u.s.flags.noHeal || u.s.flags.healFree || u.profile && u.profile.noHeal);
@@ -5273,6 +5299,16 @@ function install(battle) {
       c.n = n;
     }, { priority: -60 });
     const rhodePids = new Set(rhode.map((st) => st.pid));
+    const refreshOverflow = (u) => {
+      if (!u || !rhodePids.has(u.ownerId)) return;
+      const buff = u.findBuff(KEY.rhodeAtk);
+      if (buff) rhodeAtkTick({ unit: u, buff });
+    };
+    battle.on("skillEnd", ({ unit }) => refreshOverflow(unit), { priority: -1e3 });
+    battle.on("beforeAttack", ({ attacker }) => refreshOverflow(attacker), { priority: -1e3 });
+    battle.on("tick", () => {
+      for (const st of rhode) for (const u of st.ops) refreshOverflow(u);
+    }, { priority: -1e3 });
     installRhodeDotCap(battle, (u) => !!(u && u.side === "ally" && u.kind === "op" && rhodePids.has(u.ownerId)), num5(rhode[0].bb[ID.rhode].dot_duration_cap, 5));
     battle.on("heal", (c) => {
       const t = c.target;
@@ -5453,7 +5489,7 @@ function install(battle) {
   }
 }
 
-// marisa-s-mod/Stronghold-Protocol/server/sim/content/bands/battle.js
+// mods/marisa-native/source/server/sim/content/bands/battle.js
 var PRIO_BAND_REVIVE = PRIO_RESPAWN - 1;
 var keyOf2 = (bandId, part = "") => `band:${bandId}${part ? `:${part}` : ""}`;
 var deployedOps = (battle, pid) => playerOps(battle, pid, { fieldOnly: true });
@@ -5688,7 +5724,7 @@ function install2(battle) {
   }
 }
 
-// marisa-s-mod/Stronghold-Protocol/server/sim/content/garrisons/battle.js
+// mods/marisa-native/source/server/sim/content/garrisons/battle.js
 var ids = (s) => String(s ?? "").split(",").map((x) => x.trim()).filter(Boolean);
 var EMPTY2 = Object.freeze([]);
 var AB_FLAG_STATUS = Object.freeze({ 16: "freeze" });
@@ -6197,7 +6233,7 @@ function installHitMods(battle, by) {
   }
 }
 
-// marisa-s-mod/Stronghold-Protocol/server/match/board.js
+// mods/marisa-native/source/server/match/board.js
 var FIELD = GEO.FIELD;
 var tileKey2 = (r, c) => `${r},${c}`;
 var pieceDir = (piece) => piece && isDir(piece.dir) ? piece.dir : DEFAULT_DIR;
@@ -6205,10 +6241,10 @@ var DEPLOY_FIELDS = Object.freeze(["normal", "bossL", "bossR"]);
 var BOARD_ROWS_ABOVE_BOSS = -BOSS_ROW_OFFSET;
 var BOSS_MIRROR_COL = COLS - 1;
 
-// marisa-s-mod/Stronghold-Protocol/server/match/bondsMeta.js
+// mods/marisa-native/source/server/match/bondsMeta.js
 var pieceBonds = (gd, p) => gd.pieceBonds(p.uid);
 
-// marisa-s-mod/Stronghold-Protocol/server/match/rhodeMeta.js
+// mods/marisa-native/source/server/match/rhodeMeta.js
 var RHODE_BOND = "bond_x_marisa_rhodeShip";
 var num8 = (v, d = 0) => typeof v === "number" && Number.isFinite(v) ? v : d;
 function rhodeBb(gd) {
@@ -6306,7 +6342,7 @@ function settlePrepGain(ps) {
   return add;
 }
 
-// native-port/runtime-prep.js
+// mods/marisa-native/runtime-prep.js
 function installPrep(sp) {
   const matches = /* @__PURE__ */ new WeakMap();
   const state = (ctx) => {
@@ -6348,7 +6384,7 @@ function installPrep(sp) {
   });
 }
 
-// native-port/runtime-entry.js
+// mods/marisa-native/runtime-entry.js
 function setup(sp) {
   for (const [id, fn] of [
     ["chess_x_marisa_makoto", op_makoto_default.char_x_marisa_makoto],

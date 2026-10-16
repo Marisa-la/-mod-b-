@@ -53,6 +53,30 @@ for(const route of ['shop','diy'])test(`production SES Worker runs native kits v
  if(route==='diy')for(const name of ['makoto','amiya3'])assert.ok(host.ownerOps('p1').some(u=>u.diy?.charId==='char_x_marisa_'+name));
 });
 
+test('production SES Worker applies and maintains the Rhodes overflow cap', async t => {
+ const s=build({});assert.deepEqual(s.problems,[]);
+ const host=new WorkerSimHost({workerFactory:()=>{
+  const w=new Worker(new URL('../helpers/simWorkerNode.mjs',import.meta.url));
+  const port={postMessage:m=>w.postMessage(m),terminate:()=>w.terminate()};
+  w.on('message',data=>port.onmessage?.({data}));w.on('error',error=>port.onerror?.({error}));return port;
+ }});t.after(()=>host.stop());
+ await host.load(s.cs,{cs:s.cs,data:s.data,bounds:s.bounds,hashInput:s.index,scripts:s.scripts});
+ const spec=fixtureSpec();spec.cs=s.cs;spec.timeLimit=15;
+ spec.players[0].units=[
+  {uid:1,chessId:'chess_char_3_21_a',row:10,col:4},
+  {uid:2,chessId:'chess_x_marisa_amiya3_a',row:11,col:4},
+  {uid:3,chessId:'chess_x_marisa_kalts2_a',row:10,col:7},
+ ];
+ spec.players[0].bonds={bond_x_marisa_rhodeShip:{active:true,count:2,tier:2,layers:1000}};
+ // Keep the battle alive without an enemy entering the operators' skill/attack ranges.
+ spec.spawns=[{time:14,enemyKey:'enemy_1001_bigbo',count:1,routeIndex:0}];
+ await host.start(spec);for(let i=0;i<8;i++)await host.step(30);
+ const unit=host.battle.allyUnits.find(u=>u.uid===1);
+ const stats=await host.rpc('unitStats',[unit.id]);
+ const diag=await host.rpc('budget',['marisa']);assert.deepEqual(diag.errors,[]);assert.equal(diag.disabled,false);
+ assert.equal(stats.atk,stats.base.atk*2,JSON.stringify({time:host.battle.time,bonds:host.packet.players.p1.bonds,stats,diag}));
+});
+
 test('native sandbox match child completes real bot rounds including prep hooks', {timeout:120000},async t=>{
  const previous=process.env.SP_PLUGIN_SCRIPTS;process.env.SP_PLUGIN_SCRIPTS='sandbox';
  t.after(()=>{if(previous===undefined)delete process.env.SP_PLUGIN_SCRIPTS;else process.env.SP_PLUGIN_SCRIPTS=previous;});
