@@ -239,6 +239,7 @@
 .create-box .btn--xl { height: .92rem; font-size: calc(.32 * var(--t)); letter-spacing: .3em; }
 .create-box__hint { display: flex; align-items: center; justify-content: center; min-height: .3rem; font-size: calc(.14 * var(--t)); color: var(--text-lo); }
 
+
 /* Room-bound Marisa MOD options. The manager stays usable in the narrow lobby column and on touch screens. */
 details.mod-manager {
   max-height: 52vh;
@@ -268,3 +269,5 @@ details.mod-manager {
 .mod-manager__list--checks > label { grid-template-columns: minmax(0, 1fr) auto; }
 .mod-manager__bond > label { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: .08rem; padding: .04rem .06rem; }
 .mod-manager__members { margin: .04rem 0 .08rem .12rem; }
+
+.mod-manager { max-width:100%; }

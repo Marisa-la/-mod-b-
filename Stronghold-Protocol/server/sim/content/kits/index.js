@@ -152,7 +152,6 @@ export const OPERATOR_KIT_FILES = Object.freeze([
   'op-monstr.js',
   'op-clemnt.js',
 ]);
-export const MOD_KIT_FILES = Object.freeze(['op-makoto.js', 'mod-aglna2.js', 'mod-kalts2.js', 'op-amiya3.js']);
 
 /**
  * The 预备干员 whose every skill the generic kit covers exactly (冲锋号令, 攻击力 / 防御力 / 治疗强化, 战术咏唱, 一击即退 —
@@ -172,8 +171,6 @@ async function loadKitFile(file) {
 
 const MODULES = await Promise.all(KIT_FILES.map((group) => Promise.all(group.map(loadKitFile))));
 const STANDIN_MODULES = await Promise.all(STANDIN_KIT_FILES.map(loadKitFile));
-const MOD_MODULES = await Promise.all(MOD_KIT_FILES.map(loadKitFile));
-const MOD_KITS = Object.assign({}, ...MOD_MODULES.map((m) => Object.fromEntries(Object.entries(m.default || {}).map(([id, fn]) => [`chess_${id}`, fn]))));
 const OPERATOR_MODULES = await Promise.all(OPERATOR_KIT_FILES.map(loadKitFile));
 const registryOf = (m) => (m && m.default && typeof m.default === 'object' ? m.default : {});
 
@@ -190,14 +187,11 @@ export const OPERATOR_KITS = Object.freeze(Object.assign({}, ...OPERATOR_MODULES
  * The merged kit registry: baseChessId → (bb, chess, def) => Kit, tier 1 … tier 6, then the stand-ins' charIds, then
  * the 自选 operators' charIds.
  */
-export const KITS = Object.freeze(Object.assign({}, ...TIER_KITS, STANDIN_KITS, OPERATOR_KITS, MOD_KITS));
+export const KITS = Object.freeze(Object.assign({}, ...TIER_KITS, STANDIN_KITS, OPERATOR_KITS));
 
 /**
  * Every character a 自选 pick may field with a faithful kit: the 预备干员 (GENERIC_KIT_CHARS), the stand-ins with a kit
- * file, the operators of OPERATOR_KIT_FILES, and the MOD characters whose kit file loaded. The `kitted` option of shared/diy.js diyPool /
+ * file and the operators of OPERATOR_KIT_FILES whose file loaded. The `kitted` option of shared/diy.js diyPool /
  * validateDiyPicks.
  */
-export const KITTED_CHARS = Object.freeze([...new Set([
-  ...GENERIC_KIT_CHARS, ...Object.keys(STANDIN_KITS), ...Object.keys(OPERATOR_KITS),
-  ...Object.keys(MOD_KITS).map((id) => id.replace(/^chess_/, '')),
-])]);
+export const KITTED_CHARS = Object.freeze([...new Set([...GENERIC_KIT_CHARS, ...Object.keys(STANDIN_KITS), ...Object.keys(OPERATOR_KITS)])]);

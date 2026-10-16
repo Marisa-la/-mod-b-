@@ -180,8 +180,6 @@ H.SERVER_ADD_BOND_POSITION = {
     const other = bbStr.dir === 'behind' ? behindPiece(ctx, me) : frontPiece(ctx, me);
     const targets = [me];
     if (other && other.kind === 'chess' && other.uid !== me.uid) targets.push(other);
-    // each target gains on its OWN piece: `source` names it (the prep 罗德岛 mirror keys on the operator that gained,
-    // not on the 特质's holder — server/match/rhodeMeta.js)
     for (const t of targets) for (const b of metaBonds(ctx, t)) if (ctx.bondActive(b)) ctx.addLayers(b, num(bb.count), { requireActive: true, source: t.uid });
   },
 };
@@ -337,7 +335,7 @@ H.SERVER_SELL_CHESS_GAIN_SPECIAL_GOODS = {
     const tier = pool && Number.isInteger(pool.tier) ? pool.tier : null;
     const count = Math.max(1, num(ctx.gd.rewardOffer ? ctx.gd.rewardOffer().count : 3, 3));
     const list = [];
-    for (let i = 0; i < count * 4 && list.length < count; i++) {
+    for (let i = 0; i < count * 4 && list.length < count; i++) { // loop-cap: 4 × rewardOffer().count (≤ MAX_OFFER_SLOTS)
       const r = ctx.rollPool(poolId);
       if (r && r.kind === 'chess' && !list.includes(r.id)) list.push(r.id);
     }

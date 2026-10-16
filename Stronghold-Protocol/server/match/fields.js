@@ -40,9 +40,6 @@ export const MAX_TICKS_PER_INTERVAL = 8;
 export const INTERVAL_MS = 1000 / 30;
 export const GAME_SPEED = 2;
 export const HARD_CAP_SECONDS = 3700;
-/** 罗德岛 rhodeShip: the one bond whose clause 1 ADDS layers to itself from every other bond's in-battle gain (see
- *  layerAllowanceOf) — data/bonds.json `rhodeShip` clause 1, sim/content/bonds/addon/battle.js rhodeMirror. */
-const RHODE_BOND = 'rhodeShip';
 const SNAP_EVERY = Number.isInteger(SNAPSHOT_EVERY) && SNAPSHOT_EVERY > 0 ? SNAPSHOT_EVERY : 3;
 
 /** Catch-up cap per pacing interval: 8 ticks at the normal 2× speed, proportionally more when sped up. */
@@ -133,7 +130,7 @@ export class FieldRunner {
 
   _runInstant() {
     const cap = Math.ceil(HARD_CAP_SECONDS / TICK);
-    while (!this.stopped && !this.done && this.ticks < cap) {
+    while (!this.stopped && !this.done && this.ticks < cap) { // loop-cap: tick cap
       this._tick();
       if (this.fields.every((f) => !f.live)) break;
     }
@@ -310,7 +307,7 @@ export class HeadlessJob {
     let b = this.battle;
     try {
       let k = 0;
-      while (!b.finished && this.n < this.cap) {
+      while (!b.finished && this.n < this.cap) { // loop-cap: step cap
         b.step();
         this.n++;
         k++;
@@ -359,7 +356,7 @@ export function timelineAt(timeline, gt) {
   if (!Array.isArray(timeline) || !timeline.length) return [0, 0, 0, null];
   let lo = 0, hi = timeline.length - 1;
   if (gt >= timeline[hi][0]) return timeline[hi];
-  while (lo < hi) {
+  while (lo < hi) { // loop-cap: binary search
     const mid = (lo + hi + 1) >> 1;
     if (timeline[mid][0] <= gt) lo = mid; else hi = mid - 1;
   }
@@ -414,7 +411,7 @@ export class HeadlessPacer {
     const b = entry.battle;
     let k = 0;
     try {
-      while (!b.finished && b.tickCount < cap && k < max) { b.step(); k++; }
+      while (!b.finished && b.tickCount < cap && k < max) { b.step(); k++; } // loop-cap: tick cap
     } catch (e) {
       this.m.reportError('pacer skip', e);
       try { b.forceEnd('timeout'); } catch { /* ignore */ }
@@ -600,8 +597,7 @@ function layerBondsOf(p, gd) {
  * units), up to the per-battle cap the sim applies (content/garrisons/battle.js: `max_add_count_per_battle` — a handed-out
  * trait's too, 华法琳's 7 / 14, GitHub #175). A trait the data gives no cap (初雪 / 银灰's freeze trait, 菲莱 / 百炼嘉维尔's per-skill
  * 萨尔贡, 斯卡蒂's per-kill …) — or a 魔王, whose +extra on every trait gain counts toward no cap — leaves its bonds bounded
- * only by the room under 999 (Infinity here): such boards legitimately gain hundreds of layers a battle. 罗德岛's mirror is
- * the exception handled at the end of the function: its bound is the sum of the bonds it mirrors, not a trait cap.
+ * only by the room under 999 (Infinity here): such boards legitimately gain hundreds of layers a battle.
  * @returns {Map<string, number>} bondId → extra allowance (Infinity: uncapped)
  */
 function layerAllowanceOf(p, gd) {
@@ -610,13 +606,6 @@ function layerAllowanceOf(p, gd) {
   const units = (Array.isArray(p.units) ? p.units : []).filter((u) => u && u.kind !== 'token' && typeof u.chessId === 'string');
   const lineup = new Set(Object.keys(p.bonds && typeof p.bonds === 'object' ? p.bonds : {}));
   for (const u of units) for (const b of gd.chess(u.chessId)?.bonds || []) lineup.add(b);
-  // 罗德岛 starts at 0: it is the bond that MIRRORS other bonds' in-battle gains onto itself (its own `layerGain` clause —
-  // sim/content/bonds/addon/battle.js rhodeMirror), and no garrison / item / card names it, so nothing below would ever key
-  // it. Seeding it here lets both the 魔王 (extra) pass and the sum at the end treat it like any other bond: how much it
-  // can gain in one battle is the sum of what the bonds it mirrors can gain, not a trait cap of its own. Without this the
-  // flat 60 + 4·round was its whole bound, and a real board blew through it — solo seed 19 gained 135 罗德岛 layers in
-  // round 12 (bound 108, room to 999) off a 128-layer 灵巧 gain, so the honest client result was discarded and re-simulated.
-  if (lineup.has(RHODE_BOND) && gd.bond(RHODE_BOND)) out.set(RHODE_BOND, 0);
   let extra = false;
   const credit = (g, times) => {
     const bb = g.bb || {};
@@ -637,14 +626,6 @@ function layerAllowanceOf(p, gd) {
     }
   }
   if (extra) for (const b of out.keys()) out.set(b, Infinity);
-  // 罗德岛's own allowance is what it MIRRORS: the sum of every other bond's (see where it is seeded). Set after the run
-  // above so the 魔王 (extra) pass and the per-trait caps both feed into it — an uncapped bond it mirrors makes the mirror
-  // uncapped too, which is the honest reading, and the room under BOND_LAYER_CAP still bounds the total.
-  if (out.has(RHODE_BOND)) {
-    let sum = 0;
-    for (const [b, n] of out) if (b !== RHODE_BOND) sum += n;
-    out.set(RHODE_BOND, sum);
-  }
   return out;
 }
 
@@ -773,8 +754,7 @@ const sameMods = (a, b) => {
  * content spawns); 联防: leaks + never-spawned re-entries per (enemy, leaker) ≤ what that leaker sent in, and a split /
  * summon only on a leaker who sent in its parent, ≤ the parents' data offspring count (offspringPerParent); per-bond layer
  * gains ≤ 60 + 4·round + what the player's layer 特质 can add to that bond (layerAllowanceOf: their per-battle caps, no
- * flat bound when one is uncapped — and 罗德岛, which mirrors the others, bounded by their sum instead of a cap of its own)
- * and ≤ the room left under BOND_LAYER_CAP (999) from the bond's starting layers, only
+ * flat bound when one is uncapped) and ≤ the room left under BOND_LAYER_CAP (999) from the bond's starting layers, only
  * on bonds the player's lineup / band / effects / items name, none when the spec disables gains; coins ≤ the spawns' bounty coins;
  * perfect consistent with the counted leaks; unit states only for the player's own units, within range. `resolved` (the
  * HUD capsule's numerator): the result's own — the FIELD's, what the client's capsule showed — is kept as reported,
@@ -820,6 +800,7 @@ export function validateClientResult(spec, raw, { gd = null } = {}) {
       const p = raw.perPlayer[pid];
       if (!p || typeof p !== 'object') return bad('player');
       const own = B.players.get(pid);
+      if (p.creditedKills !== undefined && (!Number.isInteger(p.creditedKills) || p.creditedKills < 0 || p.creditedKills > 1e9)) return bad('kill credit');
       // `killed` counts every counted knock-out — a runtime split child / summon too — while `total` counts only the
       // enemies the round scheduled, so `killed ≤ total` no longer holds (PR #157 capsule semantics): bound it by
       // maxTotal (the spec's content-spawn allowance) instead, exactly like `total`
@@ -911,6 +892,7 @@ export function validateClientResult(spec, raw, { gd = null } = {}) {
         killed: p.killed, total: p.total, leaked, perfect: countedLeaks === 0, layerGains, coins,
         damageDealt: stat(p.damageDealt), bossDamage: stat(p.bossDamage), healingDone: stat(p.healingDone), deaths: Math.trunc(stat(p.deaths)),
         unitsEnd, unitStats,
+        creditedKills: Number.isInteger(p.creditedKills) ? p.creditedKills : unitStats.reduce((n, u) => n + u.kills, 0),
       };
       // the HUD capsule's numerator: kept only when the client reported one (an absent value must stay absent — the
       // teammate UI then falls back to `killed`, never to a fabricated 0); clamped to the denominator

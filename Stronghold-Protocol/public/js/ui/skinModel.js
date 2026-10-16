@@ -271,6 +271,7 @@ export function materializeAssets(m, skins, entries) {
     }
     chars[charId] = next;
   }
+  if(chars.char_4217_makoto&&chars.char_x_marisa_makoto)chars.char_x_marisa_makoto=chars.char_4217_makoto;
   const value = { ...m, chars };
   copies.set(m, { key, skins, value });
   return value;
@@ -290,8 +291,8 @@ function validSpineEntry(sp) {
  */
 export function skinCharId(chess, golden = null) {
   const g = typeof golden?.charId === 'string' && golden.charId ? golden.charId : null;
-  if (g) return g;
-  return typeof chess?.charId === 'string' && chess.charId ? chess.charId : null;
+  if (g) return g === 'char_x_marisa_makoto' ? 'char_4217_makoto' : g;
+  return chess?.charId === 'char_x_marisa_makoto' ? 'char_4217_makoto' : typeof chess?.charId === 'string' && chess.charId ? chess.charId : null;
 }
 
 /**

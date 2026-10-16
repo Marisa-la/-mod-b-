@@ -17,10 +17,6 @@
 //                       sleep / stun). "进入…时": re-applying a running status (a refresh) is not a new entry
 //                       (engine statusApplied ctx.entered) — except a pulse that re-applies its own short status as a
 //                       fresh one (applyStatus `reenter`: 缇缇 S2's sleep ward, DESIGN §24.8).
-//                       MOD_TRIGGER_ally_liftoff (予愿安洁莉娜) polls the allies'
-//                       起飞 flag `u.s.flags.liftoff` every tick — a false → true change is one take-off;
-//                       MOD_TRIGGER_levitate_skill_cast fires on skillStart when the cast skill can apply 浮空 (its
-//                       SkillSpec declares the status flag `levitate`).
 //                       Targets: bond_by_id / bond_self (own active bonds) / bond_actived_maxstack;
 //                       amounts: by_count / by_charcount_samerow / by_charlevel; conditions character_same_row /
 //                       character_same_col (≥ check_count incl. self). Gains go through support.gainLayers with
@@ -72,10 +68,7 @@ export function install(battle) {
     const bb = g.bb || {};
     const cap = S.num(bb.max_add_count_per_battle, 0) > 0 ? S.num(bb.max_add_count_per_battle) : Infinity;
     const it = {
-      // The battle rune of the record (bbStr.key, e.g. the MOD_TRIGGER_* of the MOD chess, DATA §4) wins over the
-      // generic effectKey: it is what selects the handler, while effectKey stays the data's coarse family
-      // (act1autochess_gar_event_selfdead covers every MOD_TRIGGER_* record).
-      unit, g, gid: g.garrisonId, key: (g.bbStr && g.bbStr.key) || g.effectKey, bb, bbStr: g.bbStr || {}, grantedBy,
+      unit, g, gid: g.garrisonId, key: g.effectKey, bb, bbStr: g.bbStr || {}, grantedBy,
       cap, capKey: `gar:${g.garrisonId}:${unit.id}`, cnt: 0, k: -1,
     };
     all.push(it);
@@ -85,7 +78,7 @@ export function install(battle) {
     if (!S.isOp(u)) continue;
     for (const gid of garrisonIdsOf(u)) {
       const g = S.garrisonRecord(gid);
-      if (g && g.eventType === 'IN_BATTLE') add(u, g);
+      if (g && !g.scriptHandler && g.eventType === 'IN_BATTLE') add(u, g);
     }
   }
   if (!all.length) return;
@@ -191,22 +184,6 @@ function conditionMet(battle, it) {
   return true;
 }
 
-/**
- * The live per-battle layer cap of a garrison instance. A record can tie its cap to how many members of another bond
- * stand on the field — 结城理's kill adder (owner 2026-10-07): "一回合上限为在场的【拉特兰】人数，如果没激发、或人数
- * 少于 3，上限 3 层", and "精锐化的结城理上限提升到 24 层". So `bb.cap_by_bond` names that bond, `bb.cap_min` is the
- * floor for the normal record and `bb.cap_min_elite` the floor for the elite one (the elite form is read off the unit's
- * own chess record, `isGolden`). The count is read fresh at every gain. Without `cap_by_bond` the instance keeps the
- * static `max_add_count_per_battle` cap computed in add().
- */
-function capOf(battle, it) {
-  const bondId = it.bb.cap_by_bond;
-  if (!bondId) return it.cap;
-  const elite = !!(it.unit.def && it.unit.def.raw && it.unit.def.raw.isGolden);
-  const min = elite ? S.num(it.bb.cap_min_elite, S.num(it.bb.cap_min, 3)) : S.num(it.bb.cap_min, 3);
-  return Math.max(min, S.bondMembers(battle, it.unit.ownerId, bondId, { fieldOnly: true }).length);
-}
-
 /** Fire a layer-gain garrison instance. Returns the layers added. */
 export function fireGain(battle, it) {
   if (!conditionMet(battle, it)) return 0;
@@ -223,7 +200,7 @@ export function fireGain(battle, it) {
   }
   const added = S.gainLayers(battle, {
     playerId: it.unit.ownerId, bonds, n, requireActive: true, source: it.unit, reason: 'garrison',
-    cap: whole ? Infinity : capOf(battle, it), capKey: whole ? null : it.capKey,
+    cap: whole ? Infinity : it.cap, capKey: whole ? null : it.capKey,
   });
   if (whole && added > 0) it.wholeUsed = (it.wholeUsed ?? 0) + n;
   if (added > 0) S.fxOn(battle, 'garrison', it.unit, `gar:${it.gid}`, it.key, { n: added });
@@ -261,28 +238,6 @@ function ammoScope(it, u) {
     case 'x-5': return u === h || (S.onField(h) && S.onField(u) && u.ownerId === h.ownerId && S.isOp(u) && Math.abs(u.tileR - h.tileR) + Math.abs(u.tileC - h.tileC) === 1);
     default: return u === h;
   }
-}
-
-/** `{ [skillId]: SkillSpec }` of a kit, or null. */
-function altSkillsOf(u) {
-  const m = u.kit?.skills;
-  return m && typeof m === 'object' ? m : null;
-}
-
-/**
- * "释放可施加浮空的技能": the cast skill (the live SkillRuntime, its spec, or the spec authored for its id) declares that it
- * can apply 浮空 — the SkillSpec FIELD `levitate` (tier3 予愿安洁莉娜 S2 重力自定义; a spec field because the spec's `flags`
- * are the caster's own state: a `levitate` flag there would make HER 浮空/stunned), or the status catalogue's own flag
- * `levitate` in `flags` (the older route, still accepted). 起飞 lives in `liftoff`, never here.
- */
-function levitateCast(u, skill) {
-  if (specAppliesLevitate(skill?.spec)) return true;
-  const id = skill?.id;
-  return !!(id && specAppliesLevitate(altSkillsOf(u)?.[id]));
-}
-/** The 浮空 capability marker of one SkillSpec: the field `levitate`, or the status flag in `flags`. */
-function specAppliesLevitate(spec) {
-  return !!(spec && (spec.levitate === true || (spec.flags && spec.flags.levitate)));
 }
 
 const INSTALLERS = {
@@ -375,39 +330,6 @@ const INSTALLERS = {
       if (!target || (status !== 'sleep' && status !== 'stun') || !entered) return;
       if (!(target.side === 'enemy' || (target.side === 'ally' && target.kind === 'op'))) return;
       for (const it of list) if (S.onField(it.unit) && S.inRange(it.unit, target)) fireGain(battle, it);
-    });
-  },
-
-  /**
-   * 予愿安洁莉娜 "己方任意干员起飞时（含自身），使已激活的【叙拉古】【迅捷】层数各+1": 起飞 is the skill flag
-   * `liftoff` of the airborne allies (蒂比 / 予愿安洁莉娜's skills, gamedata_const ba.liftoff) — the engine has no 起飞
-   * event, the flag is read off `u.s.flags.liftoff` and polled here: a false → true change is one take-off (the take-off
-   * of a unit already listed at install time counts too: previous = false).
-   */
-  MOD_TRIGGER_ally_liftoff(battle, list) {
-    const prev = new Map();
-    battle.on('tick', () => {
-      for (const u of battle.allyUnits) {
-        const air = !!(u.s.flags.liftoff && u.alive && u.deployed);
-        if (air === (prev.get(u) ?? false)) continue;
-        prev.set(u, air);
-        if (air) for (const it of list) fireGain(battle, it);
-      }
-    });
-  },
-
-  /**
-   * 予愿安洁莉娜 "每次释放可施加浮空的技能时，使已激活的【远见】层数+1": the cast itself is the trigger (skillStart),
-   * the condition is that the cast skill can apply 浮空. A kit declares that with the skill flag `levitate` on the spec
-   * (tier3 予愿安洁莉娜 S2 重力自定义) — the same spec-flag route as 起飞. The keys are marked so that a skill spec of
-   * the very chess carrying the garrison (its own take-off flag) can never satisfy the check by accident.
-   */
-  MOD_TRIGGER_levitate_skill_cast(battle, list) {
-    const m = byUnit(list);
-    battle.on('skillStart', ({ unit, skill }) => {
-      const arr = m.get(unit);
-      if (!arr || !levitateCast(unit, skill)) return;
-      for (const it of arr) if (S.onField(it.unit)) fireGain(battle, it);
     });
   },
 

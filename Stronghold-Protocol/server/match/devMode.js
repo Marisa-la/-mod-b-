@@ -58,7 +58,7 @@ export function devMode(env = (typeof process !== 'undefined' ? process.env : {}
  * @param {{ funds: number }} [cfg]
  */
 export function devFundsOn(m, cfg = devMode()) {
-  return cfg.funds > 0 && !!m && m.isSolo === true && m.mods?.includes('marisa') === true;
+  return cfg.funds > 0 && !!m && m.isSolo === true && m.gd?.raw?.effects?.effect_x_marisa_rhode?.scriptHandler === 'marisa';
 }
 
 /**

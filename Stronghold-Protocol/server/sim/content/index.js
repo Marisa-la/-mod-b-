@@ -27,10 +27,10 @@
 // registerAllMeta(registry) — calls each domain module's registerMeta(registry) (prep side, server boot).
 
 import { genericKit, genericTalents } from './generic.js';
+import { EXTENSIONS, installExtensions } from './extensions.js';
+import { compileDsl } from './dsl/compile.js';
+import { validateSkillSpec, matchesSchema, MODS_SCHEMA } from '../../../shared/plugins/skillSpec.js';
 import { withUnitLoadouts } from '../simdata.js';
-// MOD 补丁 (MOD 召唤物的 token kit): 复用各 ops 文件里那一份工厂（只导出，不复制），见下面的 MOD_TOKEN_KITS。
-import { anchorKit, ANCHOR as KALTS2_ANCHOR } from './kits/ops/mod-kalts2.js';
-import { markerKit, MARKER as AGLNA2_MARKER } from './kits/ops/mod-aglna2.js';
 import { isPotential } from '../../../shared/potential.js';
 
 // Content files are loaded with guarded dynamic imports: a module that fails to load (syntax error, throwing
@@ -50,30 +50,10 @@ const DOMAINS = await Promise.all(DOMAIN_NAMES.map((n) => safeImport(`./${n}.js`
 const tokens = DOMAINS[0];
 
 /**
- * MOD 补丁 (MOD 召唤物的 token kit): 我们的 token kit 注册表。
- *
- * 上游把这两个 kit 通过 `battle._setupUnit(t, kit())` / `spawnToken(..., { kit: kit() })` 塞给**一部分**出场路径：
- *   - 战术锚点 (`ops/op-kalts2.js`): 只有"她 install 时锚点已经站着"那一条路（`install` 里的
- *     `for (const t of battle.allyUnits)`）。
- *   - 「一会儿见！」标记位 (`ops/op-aglna2.js`): 只有 `placeMarker` 里她那一次 `spawnToken(..., { kit: markerKit() })`。
- * 而 `Battle.spawnToken` 走的是 `_setupUnit(u, opts.kit ?? null)`：没有 `opts.kit` 时解析落到 `tokens.kits`，那里
- * **没有**这两个 tokenId 的键，token 就拿到 `{}`（没有 无敌/不可选中/不攻击，也没有 `fromTokens`）。
- * 于是"技能召唤/玩家放置/测试直接 spawn"这类路径全部缺 kit。
- *
- * 这里把**同一个工厂**登记进内容层，让 `setupUnitKit` 的 token 分支对所有路径都能解析到它（实现仍只有一份，见
- * 各 `*Kit` 的导出注释）。键 = `def.id`（= data/tokens.json 的 tokenId），与 `TOKEN_IDS.*` 同源。
- * 键写错不会报错，只会表现为"没 kit"——加一个 MOD 召唤物就在这里加一行。
- */
-const MOD_TOKEN_KITS = Object.freeze({
-  [KALTS2_ANCHOR]: anchorKit,
-  [AGLNA2_MARKER]: markerKit,
-});
-
-/**
  * Merged kit registry: baseChessId → (bb, chess, def) => Kit, then the 补位 stand-in kits: stand-in charId → builder
  * (kits/index.js; each kit file is loaded guarded too)
  */
-export const KITS = Object.freeze(KIT_REGISTRY.KITS);
+export const KITS = KIT_REGISTRY.KITS ?? Object.freeze({});
 
 /** Domain modules in install order: tokens, devices, enemies, bosses, bonds, garrisons, items, bands, choices. */
 export const MODULES = Object.freeze(DOMAIN_NAMES.map((n, i) => [n, DOMAINS[i]]));
@@ -101,15 +81,65 @@ const isOtherBody = (def) => isStandInDef(def) || isDiyDef(def);
  * The kit builder of an operator def in `reg` ({ [key]: (bb, chess, def) => Kit }), or undefined. A stand-in's and a
  * 自选 piece's kit is keyed by its charId (`char_609_acguad`, `char_112_siege`) and by nothing else: the chess id it keeps
  * names the replaced operator's kit (a DIY slot has none). Any other def: baseId (`…_a`, data/SIM.md), the exact id, or
- * the suffix-less id of DESIGN §5.6's example. A room-composed Marisa DIY prototype explicitly names its shop kit in
- * raw.modKitId, allowing an original owned DIY version of that character to keep its original charId kit.
+ * the suffix-less id of DESIGN §5.6's example.
  */
-export function kitOf(def, reg) {
+function registeredKit(def, reg) {
   if (!def || !reg) return undefined;
-  if (isDiyDef(def) && def.raw?.modKitId && Object.prototype.hasOwnProperty.call(reg, def.raw.modKitId)) return reg[def.raw.modKitId];
+  if (isDiyDef(def) && def.raw?.modKitId && Object.hasOwn(reg, def.raw.modKitId)) return reg[def.raw.modKitId];
   if (isOtherBody(def)) return Object.prototype.hasOwnProperty.call(reg, def.charId) ? reg[def.charId] : undefined;
   const bare = String(def.baseId ?? def.id ?? '').replace(/_[ab]$/, '');
-  return reg[def.baseId] ?? reg[def.id] ?? reg[bare];
+  return [def.baseId, def.id, bare].map(k => Object.hasOwn(reg, k) ? reg[k] : undefined).find(Boolean);
+}
+
+/** Official kit key or file stem; no path supplied by a plugin is ever imported. */
+export function officialKit(ref) {
+  if (Object.hasOwn(KITS, ref)) return KITS[ref];
+  const file = Object.values(KIT_REGISTRY.KIT_FILES || {}).flat().concat(KIT_REGISTRY.STANDIN_KIT_FILES || [], KIT_REGISTRY.OPERATOR_KIT_FILES || [])
+    .find(f => f.replace(/\.js$/, '') === ref);
+  if (!file) return undefined;
+  const stem = file.replace(/\.js$/, '');
+  if (stem.startsWith('chess_')) return KITS[stem.split('-')[0] + '_a'];
+  const code = stem.replace(/^(op|standin)-/, '');
+  return Object.entries(KITS).find(([k]) => k.startsWith('char_') && k.endsWith('_' + code))?.[1];
+}
+
+/**
+ * [ASSUMED] A one-skill DIY or stand-in uses that kit's default skill (DESIGN §32.5). Multi-skill clones keep
+ * explicit `skills[id]` so selectSkillSpec does not treat the default spec as every selected skill.
+ */
+function bindDefaultSkill(k, chess, d) {
+  if (k?.skill && isOtherBody(d) && chess?.skills?.length === 1 && d?.skill?.id && !k.skills?.[d.skill.id]) {
+    return { ...k, skills: { ...(k.skills || {}), [d.skill.id]: k.skill } };
+  }
+  return k;
+}
+
+/** C2 order: extension → DSL → JSON SkillSpec → kitRef → official → generic. */
+export function kitOf(def, reg = KITS) {
+  if (!def) return undefined;
+  // Explicit Battle opts.kits retain their existing precedence and lookup-only semantics.
+  if (reg !== KITS) return registeredKit(def, reg);
+  const ext = registeredKit(def, EXTENSIONS) ?? (def.charId?.startsWith('char_x_') ? EXTENSIONS[def.charId] : undefined);
+  if (ext) return ext;
+  const raw = def.raw || {};
+  if (raw.dsl != null) return (bb, chess, d) => bindDefaultSkill(compileDsl(raw.dsl, { bb, chess, def: d }), chess, d);
+  if (raw.skillSpec != null) return (bb, chess, d) => {
+    const spec = chess.skill?.skillSpec ?? raw.skillSpec;
+    const errors = validateSkillSpec(spec);
+    const mods = chess.talentMods ?? {};
+    if (errors.length || !matchesSchema(mods, MODS_SCHEMA)) throw Object.assign(new Error('Invalid JSON SkillSpec'), { code: 'PLUGIN_SKILL_SPEC' });
+    return { skills: { [d.skill?.id]: spec }, talents: Object.keys(mods).length ? [{ install(b, u) {
+      b.addBuff(u, { key: 'talent:plugin', mods, persist: true, allowDead: true });
+    } }] : [] };
+  };
+  if (raw.kitRef != null) {
+    const f = officialKit(raw.kitRef);
+    if (!f) return undefined;
+    return (bb, chess, d) => {
+      return bindDefaultSkill(f(bb, chess, d), chess, d);
+    };
+  }
+  return registeredKit(def, KITS);
 }
 
 /** The generic kit of an operator def; a stand-in's / 自选 piece's also carries the talents generic.js can apply exactly. */
@@ -128,16 +158,7 @@ export function setupUnitKit(battle, unit, mode = 'full') {
   const raw = def.raw ?? def;
   const bb = def.skill?.bb ?? {};
   if (unit.kind === 'token') {
-    // MOD 补丁: 先查 MOD token kit 注册表（同一个函数对象包一层，带上 `fromTokens`，语义同 `tokens.kits` 的包装）。
-    const mk = mode === 'full' ? battle.opts?.tokenKits?.[def.id] : null;
-    if (typeof mk === 'function') {
-      try {
-        const k = mk(bb, raw, def);
-        if (k && typeof k === 'object') return { ...k, fromTokens: true };
-        if (k) return k;
-      } catch (e) { battle._handlerError(`modTokenKit:${def.id}`, unit, e); }
-    }
-    const tk = mode === 'full' ? (tokens.kits?.[def.id] ?? tokens.default?.[def.id]) : null;
+    const tk = mode === 'full' ? (EXTENSIONS[def.id] ?? tokens.kits?.[def.id] ?? tokens.default?.[def.id]) : null;
     if (typeof tk === 'function') {
       try { const k = tk(bb, raw, def); if (k) return k; } catch (e) { battle._handlerError(`tokenKit:${def.id}`, unit, e); }
     }
@@ -152,6 +173,22 @@ export function setupUnitKit(battle, unit, mode = 'full') {
         const k = f(bb, raw, def);
         if (k) return selectSkillSpec(k, bb, raw, def);
       } catch (e) {
+        const dslCode = typeof e?.code === 'string' && /^PLUGIN_DSL_[A-Z0-9_]+$/.test(e.code);
+        // A record that carries DSL, or a throw whose code is a DSL problem, is a corrupt content set.
+        // Do not substitute the generic kit or an empty kit (DESIGN §32.7). Any other throw still falls back.
+        // Matched as a pattern, not a quoted PLUGIN_* name: the error catalogue scans those strings.
+        if (dslCode || raw.dsl != null) {
+          if (e && typeof e === 'object') {
+            e.contentFault = true;
+            if (typeof e.code === 'string' && !String(e.message || '').includes(e.code)) e.message = `${e.code} ${e.message || ''}`.trim();
+          }
+          battle.contentFault = {
+            layer: 'setupUnitKit',
+            code: typeof e?.code === 'string' ? e.code : 'PLUGIN_DSL_SHAPE',
+            message: String(e?.message || e),
+          };
+          throw e;
+        }
         battle._handlerError(`kit:${isOtherBody(def) ? def.charId : def.baseId}`, unit, e);
       }
     }
@@ -272,10 +309,6 @@ export function skillSpecSource(def, kits = KITS) {
   if (!k || k.generic) return 'generic';
   const id = selectedSkillId(def);
   if (id && k.skills && Object.prototype.hasOwnProperty.call(k.skills, id)) return 'skills';
-  // `kit.skill` is the spec of the skill the kit was BUILT for. The kit is built for the selected loadout, so a spec whose
-  // own id is the selected one is an authored spec — not only for the record's default skill. A kit built from a raw
-  // record (`def` without loadout info) passes the record's default `bb`, and the ids then agree too.
-  if (id && k.skill && k.skill.id === id) return 'kit';
   return skillIsDefault(def) && k.skill !== undefined ? 'kit' : 'generic';
 }
 
@@ -286,20 +319,22 @@ export function skillSpecSource(def, kits = KITS) {
  * and every other id-only lookup resolve the owner's selected skill / module there too (DESIGN §16).
  */
 export function installContent(battle, { mode = 'full', extra = null } = {}) {
-  // MOD 补丁 (战术锚点 kit): 把 MOD token kit 注册表挂到这一场 battle 上，供 setupUnitKit 解析（见 MOD_TOKEN_KITS）。
-  // 放在这里而不是模块顶层：本函数在每场 battle 的 kit 解析之前跑，且不会写到冻结的 `tokens.kits` 上。
-  if (mode === 'full' && battle.opts) {
-    try { battle.opts.tokenKits = Object.assign({}, battle.opts.tokenKits, MOD_TOKEN_KITS); } catch (e) { /* frozen opts: 忽略 */ }
-  }
   try {
     const view = withUnitLoadouts(battle.data, (battle.players || []).map((p) => p && p.input));
     if (view && view !== battle.data) battle.data = view;
   } catch (e) { battle._handlerError?.('loadoutView', null, e); }
   for (const u of battle.allyUnits) {
     if (u.kit) continue;
-    try { battle._setupUnit(u); } catch (e) { battle._handlerError('setupUnit', u, e); }
+    try { battle._setupUnit(u); } catch (e) {
+      if (e?.contentFault || battle.contentFault) {
+        battle._handlerError('content:dsl', u, e);
+        throw e;
+      }
+      battle._handlerError('setupUnit', u, e);
+    }
   }
   if (mode === 'full') {
+    installExtensions(battle);
     for (const [name, mod] of MODULES) {
       if (typeof mod.install !== 'function') continue;
       try { mod.install(battle); } catch (e) { battle._handlerError(`content:${name}`, null, e); }

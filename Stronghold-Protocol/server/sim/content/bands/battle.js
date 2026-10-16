@@ -31,7 +31,6 @@
 //                                               elite or not) stand on the field get ATK +atk
 //   act2autochess_band3_buff  伊奥莱塔 统御号令 at combat start n = elite operators on the field ⇒ every elite operator
 //                                               ATK +atk_per_cnt × n, HP +max_hp_per_cnt × n (all 直接乘算)
-// MOD_band_kun: after three lethal devours, revive the victims and give the last credited devourer liftoff and anti-air.
 //   auto_chess_change_map     Touch 外勤医疗    "所有玩家场地上出现一名<预备干员-医疗>": once selected in this match, its
 //                                               retained team grant gives every player's field the map character of the
 //                                               variant whose common_condition holds for that player's elites on the field
@@ -56,9 +55,6 @@ export const PRIO_BAND_REVIVE = PRIO_RESPAWN - 1;
 
 const keyOf = (bandId, part = '') => `band:${bandId}${part ? `:${part}` : ''}`;
 const deployedOps = (battle, pid) => playerOps(battle, pid, { fieldOnly: true });
-
-/** DamageInfo tag the 阿戈尔 devour puts on its 5000 物理流失 (bonds/core.js devour: `battle.loseHp(…, { tags: ['bond:egir:devour'] })`). */
-const DEVOUR_TAG = 'bond:egir:devour';
 
 // ---------------------------------------------------------------------------------------------------------------
 // band buff behaviours: (battle, ps, params, bandId)
@@ -211,87 +207,15 @@ const BY_KEY = {
       for (const u of elites) passiveBuff(battle, u, keyOf(bandId), mods);
     });
   },
-
-  // 鲲 化鲲为鹏（只因）
-  //
-  // 阿戈尔's devour (bonds/core.js devour: the 5-tier bond's battle-start pass) knocks operators out with a 5000 物理流失
-  // whose DamageInfo carries DEVOUR_TAG. The band counts those knock-outs and, on the one that reaches devour_count, (a)
-  // revives every one of them in place and (b) makes the 阿戈尔 the devour credits with that knock-out take off.
-  //
-  // The count hangs on the `damaged` event, never on the `devour` fx: the fx fires for every mark the pass RESOLVES,
-  // before the loss lands — a marked unit that survives it (HP, a 战斗中的 不死 …), or one whose remaining marks are
-  // cancelled once it is knocked out, is no knock-out (bonds/core.js devour). The damage tag is visible nowhere else:
-  // the `death` event carries `{ unit, reason, killer }` only, and the killer alone cannot tell the devour from an
-  // attack or a skill of the same 阿戈尔. Lethality is read off `target.hp` in `damaged` (applyHpLoss clamps it to 0
-  // before the event and the `kill` follows): every `fatal` saver — items (PRIO_REVIVE / PRIO_RESPAWN), kits, 埃芒加德's
-  // band (PRIO_BAND_REVIVE) — has already run and left a saved unit at HP ≥ 1, so a saved unit is never counted.
-  // The revive is bond:indomShip's "立刻重新部署" (its own comment: 令受益者下次部署的再部署时间和费用归零), i.e. an immediate
-  // `battle.redeploy(u, { free })` on the unit's rest tile — where it fell (Battle.restTile) — so it IS a new deployment
-  // (deploySeq++, `deploy { initial: false }`, full HP, SP reset), which is also what opens a new deployment for
-  // 坚固维式重锤's lock; `revivedInPlace` (M3茧甲 / 埃芒加德, an in-place 复活 that never leaves the field) is not used
-  // here. Down units another mechanism has already picked up are left alone (the hook runs after 阿戈尔 5's own
-  // 立刻复活, priority 11, and 不屈's, 10 — the file's convention, 埃芒加德's PRIO_BAND_REVIVE) and the devour's own
-  // cancellation rule keeps a revived member's pending marks from knocking it out again.
-  // 该【阿戈尔】干员 = the marker `death` credits with the knock-out that reaches the count (bonds/core.js devour:
-  // "击杀来源始终为对应标记的付与来源"), not every 阿戈尔 that ate something [ASSUMED: the text names one]. Its 起飞 is the
-  // tier2.js LIFTOFF_FLAGS pair on a persisted buff — `liftoff` drops the ground block (Battle._blockerFor; a ground
-  // enemy already held lets go, ai.js updateEnemy) and adds 对地规避 (targeting.js evadesGround, the official 起飞 term),
-  // `blockFly` is what lets it block air units instead (the unit stays a 地面单位 on its tile). "可同时攻击地面与空中的
-  // 敌人" has no buff flag: the attack profile is resolved per unit at setup (professions.resolveProfile — a melee 阿戈尔
-  // has canHitFly false, a 要塞 / 炮手 is groundOnly), so the band retypes the live profile (tier5.js replaces profiles
-  // the same way).
-  // Once per battle, on the knock-out that REACHES the count ("达到3名时"): the count keeps growing afterwards, but the
-  // band neither revives nor takes off again — a later devour knock-out stays down [ASSUMED: 本次 = the knock-outs the
-  // trigger counted]. The band names no 我方 and the devour itself has no own-side limit (a teammate's operator in front
-  // is devoured like an own one): the count, the revive and the take-off follow the devour, whatever the owner.
-  MOD_band_kun(battle, ps, p, bandId) {
-    const need = Math.max(1, Math.floor(num(p.devour_count, 3)));
-    const free = !(num(p.revive_redeploy_cost, 0) > 0);
-    const flags = {};
-    if (num(p.liftoff, 0) > 0) flags.liftoff = true;
-    if (num(p.block_fly, 0) > 0) flags.blockFly = true;
-    const hitFly = num(p.hit_fly, 0) > 0;
-    const pending = new Set(); // a lethal devour hit is on this unit right now (`damaged` → its `death`)
-    const downed = [];         // [{ unit, by }] the devour knock-outs of this battle, in knock-out order
-    let fired = false;
-    battle.on('damaged', (c) => {
-      const t = c.target;
-      if (fired || !t || t.side !== 'ally' || t.kind !== 'op' || !t.alive || t.hp > 0) return;
-      const dmg = c.dmg;
-      if (!dmg || !Array.isArray(dmg.tags) || !dmg.tags.includes(DEVOUR_TAG)) return;
-      pending.add(t);
-    });
-    battle.on('death', (c) => {
-      const u = c.unit;
-      if (c.reason !== 'killed' || !pending.delete(u) || fired) return;
-      downed.push({ unit: u, by: c.killer });
-      if (downed.length < need) return;
-      fired = true;
-      for (const d of downed) {
-        if (d.unit.alive || d.unit.removed) continue; // already standing again (阿戈尔 5's 立刻复活, 不屈, M3茧甲 …)
-        if (!battle.redeploy(d.unit, { free })) continue;
-        fxOn(battle, 'revive', d.unit, keyOf(bandId), bandId);
-      }
-      const by = downed[downed.length - 1].by;
-      if (!by || !isOp(by)) return;
-      if (flags.liftoff || flags.blockFly) {
-        passiveBuff(battle, by, keyOf(bandId, 'liftoff'), null, { flags, visible: true });
-        // `takeoffKun`, not the shared `takeoff` (render/fx.js): this is a once-per-battle moment, and the generic 起飞
-        // burst is the same 0.4 s effect 浮空 / 失重 use — it disappeared under the three 复活 summons fired beside it.
-        fxOn(battle, 'takeoffKun', by, keyOf(bandId, 'liftoff'), bandId);
-      }
-      if (hitFly) { by.profile.canHitFly = true; by.profile.groundOnly = false; }
-    });
-  },
 };
 
 // ---------------------------------------------------------------------------------------------------------------
 // Touch 外勤医疗 (auto_chess_change_map, every player's field)
 
 /** Map-character variants of band_amedic: [{ cond, cnt, chars: [tokenId…] }]. */
-export function amedicVariants() {
+export function amedicVariants(bandId = AMEDIC_BAND) {
   const out = [];
-  for (const b of buffsOf(bandRecord(AMEDIC_BAND))) {
+  for (const b of buffsOf(bandRecord(bandId))) {
     if (b.key !== 'auto_chess_change_map') continue;
     const chars = new Set();
     for (const [k, v] of Object.entries(b.p)) if (k.includes('#') && num(v) > 0) chars.add(k.split('#')[0]);
@@ -318,7 +242,7 @@ function installMapChars(battle) {
     const chars = [];
     for (const ps of holders) {
       const elites = deployedOps(battle, ps.playerId).filter(isElite).length;
-      for (const id of amedicCharsFor(elites, variants)) chars.push({ playerId: ps.playerId, id });
+      for (const id of amedicCharsFor(elites, bandRecord(ps.bandId)?.effectRef === AMEDIC_BAND ? amedicVariants(ps.bandId) : variants)) chars.push({ playerId: ps.playerId, id });
     }
     for (const [i, { playerId, id }] of chars.entries()) {
       // The reserve medic occupies this stage slot in preparation; Touch replaces it at battle start. [ASSUMED]

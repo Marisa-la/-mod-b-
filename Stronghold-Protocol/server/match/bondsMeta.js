@@ -27,14 +27,6 @@ import { layerGainRoom } from '../../shared/constants.js';
 
 export const HARMONY_BOND = 'maniShip';
 export const DEPUTY_BOND = 'deputShip';
-/**
- * MOD 罗德岛 (`data/bonds.json` rhodeShip, a 副盟约, owner 2026-10-08): with ≥ `RHODE_DONATE_MIN` distinct 罗德岛 members on
- * the board, every 罗德岛 operator also counts toward the member count of the CORE bonds that are already triggered at that
- * moment — it lifts their `count` (and so their tier), and the operators still receive nothing from those bonds: the
- * effects keep going through `isMember` (support/index.js), which only looks at the unit's own bonds.
- */
-export const RHODE_BOND = 'rhodeShip';
-export const RHODE_DONATE_MIN = 4;
 
 /**
  * Bonds of a chess piece: own bonds ∪ bonds granted by 变形同构体 pairings.
@@ -124,23 +116,6 @@ export function computeBonds(gd, ps) {
   for (const id of gd.bondIds) {
     if (gd.modeInactiveBonds.has(id)) continue;
     raw[id] = rawCount(gd, id, mem, ps);
-  }
-  // MOD 罗德岛 (owner 2026-10-08): ≥ 4 distinct 罗德岛 members on the board ⇒ each 罗德岛 operator adds one head to every CORE
-  // bond that is ALREADY triggered (tier ≥ 1 from its own members); the donation can lift that bond to a higher tier, and
-  // a 罗德岛 operator that already carries the core bond is not counted twice. Only the COUNT moves: `isMember` is untouched, so
-  // the 罗德岛 operators get none of that bond's effects (「不享受加成」).
-  const rhodeBoard = onBoard.get(RHODE_BOND) ?? new Set();
-  const rhodeMin = Number(gd.bond(RHODE_BOND)?.bb?.field_donate_min) || RHODE_DONATE_MIN;
-  if (rhodeBoard.size >= rhodeMin) {
-    for (const id of Object.keys(raw)) {
-      const bond = gd.bond(id);
-      if (!bond || !bond.isCore) continue;
-      if (tierFor(bond, raw[id]) < 1) continue;
-      const own = onBoard.get(id) ?? new Set();
-      let extra = 0;
-      for (const base of rhodeBoard) if (!own.has(base)) extra++;
-      if (extra > 0) raw[id] += extra;
-    }
   }
   // 调和: +1 to core bonds with ≥ 1 real board member while it is active
   const harmony = gd.bond(HARMONY_BOND);

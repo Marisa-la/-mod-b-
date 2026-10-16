@@ -323,11 +323,7 @@ async function smoke(env) {
 function runStep(step, env) {
   switch (step.id) {
     case 'setup': return node(['tools/setup.mjs', '--check', '--no-local'], env);
-    case 'test': {
-      const n = Number(env.SP_TEST_CONCURRENCY);
-      if (env.SP_TEST_CONCURRENCY && (!Number.isInteger(n) || n < 1 || n > 16)) throw new Error('SP_TEST_CONCURRENCY must be an integer from 1 to 16');
-      return node(['--test', ...(n ? [`--test-concurrency=${n}`] : [])], env);
-    }
+    case 'test': return node(['--test'], env);
     case 'smoke': return smoke(env);
     case 'lint': return node([binPath('eslint', 'eslint'), '.'], env);
     case 'imports': return node(['tools/check-imports.mjs'], env);

@@ -10,8 +10,7 @@
 import { deepHash } from './core.js';
 
 /** The data files the sim reads: public/js/battle/runner.js SIM_DATA_FILES (test/sim/simcheck.test.js keeps them equal). */
-export { CONTENT_FILES as SIM_DATA_FILES } from '../../../shared/mods.js';
-import { CONTENT_FILES as SIM_DATA_FILES } from '../../../shared/mods.js';
+export const SIM_DATA_FILES = Object.freeze(['chess', 'enemies', 'tokens', 'stages', 'waves', 'bonds', 'items', 'garrisons', 'bands', 'effects', 'backups']);
 /** Per unit in the state vector. */
 export const FIELDS = Object.freeze(['alive', 'removed', 'deployed', 'x', 'y', 'hp', 'atkCd', 'sp', 'burn', 'neural', 'necrosis', 'apoptosis', 'erosion',
   'dmg', 'taken', 'heal', 'blocking']);

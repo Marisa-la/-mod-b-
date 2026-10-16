@@ -26,11 +26,22 @@
 // each text from the first overlay of the chain that has it, else the Chinese one. `setLocale('zh')` goes back. Each
 // switch notifies the subscribers of every loaded file, so `useData` components re-render. `localeName(zh)` maps a
 // Chinese game-data name to the current language (server messages name operators / items in Chinese).
+//
+// Views (DESIGN §32 P1a): `setView(name, fn)` shows a file through `fn` from then on — `get(name)` returns fn(the file);
+// `getRaw`, `lookup` and `list` do not — and tells the file's subscribers. public/js/content.js shows the art manifest
+// (`assets`) this way: with the room's cosmetic plugins and the player's own laid over it (public/js/assets.js
+// cosmetics.apply), so every `data.get('assets')` of the interface draws what the room draws.
+//
+// Content sets (DESIGN §32.6 P1c): `setContent({ id, values, overlay })` makes the files of `values` (name → the JSON a
+// page checked: public/js/content.js, every byte against the set's /cs/<cs16>/index.json) the store's files — `get`,
+// `lookup`, `list` and every getter read the room's content set — and `overlay(lang)` the source of a language's game
+// texts (the set's own i18n/<lang>.json: a plugin's operators named in that language); `setContent(null)` gives the
+// server's files back (the entries the set replaced, kept meanwhile — nothing is downloaded again) and its overlays. The
+// subscribers of every file that changed hands are told. One content set at a time: the next one replaces it.
 
 import { useEffect, useReducer } from '../vendor/hooks.module.js';
 import { applyFileOverlay } from '../../shared/i18nData.js';
 import { canonicalLang } from '../../shared/i18nPacks.js';
-import { CONTENT_FILES, composeModData, isDefaultModOptions, normalizeModOptions, validMods } from '../../shared/mods.js';
 
 /** Known data files (name → URL basename). Unknown names are allowed too (`/data/<name>.json`). */
 export const DATA_FILES = Object.freeze({
@@ -45,8 +56,6 @@ export const DATA_FILES = Object.freeze({
   choices: 'choices.json',
   config: 'config.json',
   assets: 'assets.json',
-  // The MOD's own operator-skin registry (data/skins.json; ui/skinModel.js). Not a build-data output: it only lists
-  // which official skinIds an operator offers — the manifest's own `skins` group holds their name, art and Spine.
   skins: 'skins.json',
   // 补位 stand-ins (DATA.md §18): the bodies the 干员持有 screen, the cards and the detail card compose (shared/standIn.js)
   backups: 'backups.json',
@@ -128,11 +137,7 @@ const transientFailure = (err) => {
  *   `timeoutMs` 0 turns the art-manifest clock off. `setTimeout` / `clearTimeout` let a test fire that clock.
  */
 export function createDataStore(opts = {}) {
-  const base = (opts.base ?? '/data/').endsWith('/') ? (opts.base ?? '/data/') : `${opts.base}/`;
-  const modBase = `${base}mods/marisa/`;
-  let gameplayBase = base;
-  let gameplayOptions = null;
-  let profileRevision = 0;
+  const base = opts.base ?? '/data/';
   const doFetch = opts.fetch || ((...a) => globalThis.fetch(...a));
   const retryDelays = Array.isArray(opts.retryDelays) ? opts.retryDelays : RETRY_DELAYS_MS;
   const wait = opts.wait || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
@@ -145,7 +150,6 @@ export function createDataStore(opts = {}) {
   const warned = new Set();
   /** Current locale ('zh' = the files as they are) and the downloaded overlays by language (shared/i18nData.js). */
   let locale = 'zh';
-  let localeRequest = { lang: 'zh', chainIn: [] };
   /** The languages whose overlays apply, best first (a subset of the chain setLocale got: those that downloaded). */
   let chain = [];
   /** setLocale calls so far: a slower earlier call never overrides a later one. */
@@ -156,8 +160,20 @@ export function createDataStore(opts = {}) {
   const overlays = new Map();
   /** name → { lang, value, index } localized copy of a ready file (dropped on every switch / reload of the file) */
   const localized = new Map();
-  let modSourcesPromise = null;
-  const composedProfiles = new Map();
+  /** name → the view `get` shows the file through (setView; the art manifest with the cosmetic plugins) */
+  const views = new Map();
+  /**
+   * The content set the files come from (setContent: `values` name → JSON, `overlay(lang)` → a language's game texts or
+   * null), or null: the files at `base`.
+   * @type {{ id: string, values: Map<string, any>, overlay: ((lang: string) => Promise<any>) | null, langs: Set<string> } | null}
+   */
+  let content = null;
+  /** name → the entry of the server's file a content set replaced (given back by setContent(null)) */
+  const stash = new Map();
+  /** the last setLocale's language and chain (applied again when a content set brings its own game texts) */
+  let lastLocale = null;
+  /** the content set whose overlays the chain in effect came from ('' = the server's) */
+  let chainSource = '';
 
   const notify = (name) => {
     for (const fn of [...listeners]) {
@@ -165,45 +181,7 @@ export function createDataStore(opts = {}) {
     }
   };
 
-  const urlFor = (name) => (['assets', 'local'].includes(name) ? base : gameplayBase) + (DATA_FILES[name] || `${name}.json`);
-
-  async function jsonAt(url) {
-    const res = await doFetch(url, { cache: 'no-cache' });
-    if (!res || !res.ok) throw Object.assign(new Error(`HTTP ${res ? res.status : '???'}`), { status: res ? res.status : null });
-    try { return await res.json(); }
-    catch (err) { throw Object.assign(err instanceof Error ? err : new Error(String(err)), { badJson: true }); }
-  }
-
-  function loadModSources() {
-    if (!modSourcesPromise) {
-      modSourcesPromise = (async () => {
-        const [vanilla, extended] = await Promise.all([
-          Promise.all(CONTENT_FILES.map(async (name) => [name, await jsonAt(`${base}${name}.json`)])),
-          Promise.all(CONTENT_FILES.map(async (name) => [name, await jsonAt(`${modBase}${name}.json`)])),
-        ]);
-        return { vanilla: Object.fromEntries(vanilla), extended: Object.fromEntries(extended) };
-      })().catch((err) => { modSourcesPromise = null; throw err; });
-    }
-    return modSourcesPromise;
-  }
-
-  async function composedProfile() {
-    const options = gameplayOptions;
-    const key = JSON.stringify(options);
-    if (composedProfiles.has(key)) return composedProfiles.get(key);
-    const revision = profileRevision;
-    const promise = loadModSources().then(({ vanilla, extended }) => composeModData(vanilla, extended, options));
-    composedProfiles.set(key, promise);
-    try {
-      const value = await promise;
-      if (revision !== profileRevision) return value; // the entry being loaded is superseded and will not be installed
-      composedProfiles.set(key, value);
-      return value;
-    } catch (err) {
-      if (composedProfiles.get(key) === promise) composedProfiles.delete(key);
-      throw err;
-    }
-  }
+  const urlFor = (name) => base + (DATA_FILES[name] || `${name}.json`);
 
   /**
    * One attempt at a file. Art manifests reject with a transient `{ timeout: true }` when the clock fires; a response
@@ -211,10 +189,6 @@ export function createDataStore(opts = {}) {
    */
   function readJson(name) {
     const run = async () => {
-      if (gameplayBase === modBase && CONTENT_FILES.includes(name) && !isDefaultModOptions(gameplayOptions)) {
-        const profile = await composedProfile();
-        return profile[name] ?? null;
-      }
       const res = await doFetch(urlFor(name), { cache: 'no-cache' });
       if (!res || !res.ok) throw Object.assign(new Error(`HTTP ${res ? res.status : '???'}`), { status: res ? res.status : null });
       try {
@@ -332,59 +306,90 @@ export function createDataStore(opts = {}) {
   }
 
   /**
-   * Download (once per language) a game-text overlay — `url` (a pack folder's file, from the pack index) or the language
-   * folder's data/i18n/<lang>.json; resolves to it, or null when unavailable.
+   * Download (once per language and source) a game-text overlay — `url` (a pack folder's file, from the pack index) or
+   * the language folder's data/i18n/<lang>.json, or — a content set with texts of its own for the language (setContent) —
+   * the set's i18n/<lang>.json through its `overlay` loader; resolves to it, or null when unavailable.
    */
   function loadOverlay(lang, url = `${base}i18n/${lang}.json`) {
-    if (gameplayBase !== base && url.startsWith(`${base}i18n/`)) url = `${gameplayBase}i18n/${lang}.json`;
-    if (overlayLoads.has(lang)) return overlayLoads.get(lang);
-    const revision = profileRevision;
+    const own = content && content.overlay && content.langs.has(lang) ? content : null;
+    const key = own ? `${own.id}|${lang}` : lang;
+    if (overlayLoads.has(key)) return overlayLoads.get(key);
     const p = (async () => {
+      if (own) {
+        let json = null;
+        try { json = await own.overlay(lang); } catch (err) { console.warn(`[data] the content set's ${lang} texts are not applied`, err); }
+        if (json && typeof json === 'object' && json.files) { overlays.set(lang, json); return json; }
+        overlayLoads.delete(key);
+        return null;
+      }
       for (let attempt = 0; ; attempt++) {
         try {
           const res = await doFetch(url, { cache: 'no-cache' });
           if (!res || !res.ok) throw Object.assign(new Error(`HTTP ${res ? res.status : '???'}`), { status: res ? res.status : null });
           const json = await res.json();
           if (!json || typeof json !== 'object' || !json.files) throw Object.assign(new Error('not an overlay'), { badJson: true });
-          if (revision !== profileRevision) return null;
           overlays.set(lang, json);
           return json;
         } catch (err) {
-          if (revision !== profileRevision) return null;
           if (transientFailure(err) && attempt < retryDelays.length) { await wait(retryDelays[attempt]); continue; }
           console.warn(`[data] ${url} unavailable (${err?.message || err}); its game texts are not applied`);
-          overlayLoads.delete(lang); // a later switch may try again
+          overlayLoads.delete(key); // a later switch may try again
           return null;
         }
       }
     })();
-    overlayLoads.set(lang, p);
+    overlayLoads.set(key, p);
     return p;
+  }
+
+  /**
+   * The content set's files become the store's (see the header), or the server's again (null). Every file that changes
+   * hands is told to its subscribers; the current language's game texts are taken from the new source.
+   * @param {{ id: string, values: Map<string, any> | Record<string, any>, overlay?: ((lang: string) => Promise<any>) | null,
+   *   langs?: Iterable<string> } | null} next
+   */
+  function setContent(next) {
+    const prev = content;
+    const values = next ? (next.values instanceof Map ? next.values : new Map(Object.entries(next.values || {}))) : null;
+    content = next && values ? { id: String(next.id), values, overlay: typeof next.overlay === 'function' ? next.overlay : null, langs: new Set(next.langs || []) } : null;
+    if ((prev?.id ?? null) === (content?.id ?? null) && prev?.values === content?.values) return;
+    const names = new Set([...(prev ? prev.values.keys() : []), ...(content ? content.values.keys() : [])]);
+    for (const name of names) {
+      if (content && content.values.has(name)) {
+        // keep the server's entry while the set shows its own (given back by setContent(null), never downloaded again)
+        const cur = entries.get(name);
+        if (!(prev && prev.values.has(name)) && cur) stash.set(name, cur);
+        const value = content.values.get(name);
+        entries.set(name, { status: 'ready', promise: Promise.resolve(value), value, index: null });
+      } else {
+        entries.delete(name);
+        const old = stash.get(name);
+        stash.delete(name);
+        if (old) entries.set(name, old);
+      }
+      localized.delete(name);
+    }
+    for (const name of names) notify(name);
+    // the game texts: the new source's overlays for the language in effect
+    const langs = new Set([...(prev ? prev.langs : []), ...(content ? content.langs : [])]);
+    if (langs.size && lastLocale && locale !== 'zh') api.setLocale(lastLocale.lang, lastLocale.items).catch(() => {});
   }
 
   const api = {
     /** Fetch (once) and return a file's JSON, or null when missing. */
     load,
-    profileMods: () => gameplayBase === modBase ? ['marisa'] : [],
-    profileOptions: () => gameplayBase === modBase ? gameplayOptions : null,
-    setProfile(mods = [], options = null) {
-      const next = validMods(mods) && mods.length ? modBase : base;
-      const nextOptions = next === modBase ? normalizeModOptions(options) : null;
-      if (next === gameplayBase && JSON.stringify(nextOptions) === JSON.stringify(gameplayOptions)) return Promise.resolve();
-      gameplayBase = next;
-      gameplayOptions = nextOptions;
-      profileRevision++;
-      const names = [...entries.keys()].filter((name) => !['assets', 'local'].includes(name));
-      for (const name of names) { entries.delete(name); localized.delete(name); warned.delete(name); notify(name); }
-      switches++; overlays.clear(); overlayLoads.clear(); localized.clear();
-      chain = []; // New profile translations must notify even if the selected language stays the same.
-      notify('$profile'); // Also notify preference sync when no gameplay file has been loaded yet.
-      return Promise.all([...names.map(load), api.setLocale(localeRequest.lang, localeRequest.chainIn)]);
-    },
+    /** A content set's files instead of the server's, or the server's again (null) — see the header. */
+    setContent,
+    /** The id of the content set the files come from (its cs), or null. */
+    contentId: () => content?.id ?? null,
     /** Load several files; resolves when all settled. */
     loadAll: (...names) => Promise.all(names.flat().map(load)),
-    /** JSON of a loaded file in the current locale (null when missing / not loaded yet). */
-    get: (name) => localizedEntry(name)?.value ?? entries.get(name)?.value ?? null,
+    /** JSON of a loaded file in the current locale, through its view (setView); null when missing / not loaded yet. */
+    get: (name) => {
+      const v = localizedEntry(name)?.value ?? entries.get(name)?.value ?? null;
+      const view = views.get(name);
+      return view && v != null ? view(v) : v;
+    },
     /** The file exactly as downloaded (Chinese texts), whatever the locale. */
     getRaw: (name) => entries.get(name)?.value ?? null,
     /** 'idle' | 'loading' | 'ready' | 'missing' */
@@ -410,6 +415,8 @@ export function createDataStore(opts = {}) {
     /** Drop a cached file and refetch it now (subscribers are notified when it settles). */
     invalidate(name) {
       if (!entries.has(name)) return Promise.resolve(null);
+      // a content set's file is the checked one the page holds: nothing to fetch again
+      if (content && content.values.has(name)) return Promise.resolve(content.values.get(name));
       entries.delete(name);
       localized.delete(name);
       warned.delete(name);
@@ -417,7 +424,19 @@ export function createDataStore(opts = {}) {
       notify(name); // status is 'loading' again, never a stuck 'idle'
       return p;
     },
-    /** Called with a file name on data/locale changes, or '$profile' when the gameplay profile changes. */
+    /**
+     * Show a file through `fn` from now on (`get` returns fn(file); `fn` should return the same object while its inputs
+     * stay — content.js's does), or as downloaded again (null). The file's subscribers are notified: call it again after
+     * the view's own inputs changed (see the header).
+     * @param {string} name
+     * @param {((value: any) => any) | null} fn
+     */
+    setView(name, fn) {
+      if (typeof fn === 'function') views.set(name, fn);
+      else views.delete(name);
+      notify(name);
+    },
+    /** Called with the file name whenever a file finishes loading (or is invalidated, or the locale changes). */
     subscribe(fn) {
       listeners.add(fn);
       return () => listeners.delete(fn);
@@ -437,7 +456,7 @@ export function createDataStore(opts = {}) {
      * @returns {Promise<string>}
      */
     async setLocale(lang, chainIn) {
-      localeRequest = { lang, chainIn };
+      lastLocale = { lang, items: chainIn };
       const code = canonicalLang(lang);
       const want = code && code === lang ? code : 'zh';
       const items = (Array.isArray(chainIn) ? chainIn : [want]).map((c) => (typeof c === 'string' ? { code: c, url: undefined } : c));
@@ -447,11 +466,17 @@ export function createDataStore(opts = {}) {
       const seq = ++switches;
       const got = await Promise.all(asked.map((c) => loadOverlay(c.code, typeof c.url === 'string' && c.url ? c.url : undefined)));
       if (seq !== switches) return locale; // a later switch is under way
+      // each language's overlay from the source in effect now (a content set's, or the server's again — a cached load
+      // of either is not set again by loadOverlay)
+      asked.forEach((c, i) => { if (got[i]) overlays.set(c.code, got[i]); });
       const next = ask.filter((_, i) => got[i]);
       if (ask.length && !next.length) return locale;
-      if (want === locale && next.join('|') === chain.join('|')) return locale;
+      // (the same chain from another source — a content set's texts came or went — applies again)
+      const source = content?.id ?? '';
+      if (want === locale && next.join('|') === chain.join('|') && source === chainSource) return locale;
       locale = want;
       chain = next;
+      chainSource = source;
       localized.clear();
       for (const name of [...entries.keys()]) notify(name);
       return locale;

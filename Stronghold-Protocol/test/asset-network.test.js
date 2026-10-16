@@ -19,7 +19,7 @@ const quiet = () => {};
 
 async function fixture(t) {
   const dir = await mkdtemp(join(tmpdir(), 'sp-network-'));
-  t.after(() => rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }));
+  t.after(() => rm(dir, { recursive: true, force: true }));
   return dir;
 }
 

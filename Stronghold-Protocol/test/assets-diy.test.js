@@ -116,8 +116,8 @@ test('an operator left out of 自选 (data/backups.json diy.excluded: the collab
   const text = JSON.stringify(m);
   assert.ok(BACKUPS.diy.excluded.includes('char_1048_orchd2'), '焰狐龙梓兰 is excluded');
   for (const id of BACKUPS.diy.excluded) {
-    // Optional room-scoped MOD operators need shared art even though they are not DIY picks.
-    if (id === 'char_4217_makoto') continue;
+    // Native Marisa adds these collab bodies explicitly; the other excluded operators still carry no art.
+    if (id === 'char_4217_makoto' || id === 'char_1037_amiya3') continue;
     const code = id.split('_').slice(2).join('_');
     assert.equal(m.chars[id], undefined, `${id}: chars`);
     assert.equal(m.audio.sfx.units[id], undefined, `${id}: unit sfx`);

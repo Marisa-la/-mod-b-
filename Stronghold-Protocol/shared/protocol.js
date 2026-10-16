@@ -3,9 +3,10 @@
 
 import { DIFFICULTIES, NAME_MAX_LEN, ROOM_CODE_LEN, MAX_SEATS, EMOTES, GEO } from './constants.js';
 import { isDroppableChess } from './standIn.js';
-import { validModOptions, validMods } from './mods.js';
 import { diySlotIds, validateDiyPicks } from './diy.js';
-import { cultivatedStats, isPotential, isCultivate, POTENTIAL_DEFAULT, CULTIVATE_DEFAULT } from './potential.js';
+import { cultivatedStats, isPotential, isCultivate, POTENTIAL_DEFAULT, CULTIVATE_DEFAULT, hasPotentialData } from './potential.js';
+import { isContentHash } from './plugins/identity.js';
+import { isPluginId } from './plugins/manifest.js';
 
 // ---- tiny validators -------------------------------------------------------
 const isInt = (v, lo = -Infinity, hi = Infinity) => Number.isInteger(v) && v >= lo && v <= hi;
@@ -26,6 +27,7 @@ const isMap = (v, max, key, val) => {
   return true;
 };
 const isList = (v, max, item) => Array.isArray(v) && v.length <= max && v.every(item);
+const isScalar = (v) => isStr(v, 64) || isNum(v) || isBool(v);
 
 // ---- client-side combat (DESIGN §14): b.progress / b.result payloads -------------------------------------------
 
@@ -48,6 +50,7 @@ const isPerPlayer = (p) => isPlain(p) && isInt(p.killed, 0, 1e5) && isInt(p.tota
   // knock-out — a runtime split child / summon too — and may therefore exceed `total`, which counts only the round's own
   // scheduled enemies (server/match/fields.js validateClientResult bounds it against maxTotal instead).
   && optional((x) => isInt(x, 0, 1e5))(p.resolved)
+  && optional((x) => isInt(x, 0, 1e9))(p.creditedKills)
   && isList(p.leaked, RESULT_LIMITS.leaked, isLeak) && isBool(p.perfect)
   && isMap(p.layerGains, RESULT_LIMITS.layerGains, isId, (v) => isNum(v, 0, 1e4))
   && isStat(p.coins) && isStat(p.damageDealt) && isStat(p.bossDamage) && isStat(p.healingDone) && isStat(p.deaths)
@@ -92,10 +95,7 @@ export const isLoadoutEntries = (v) => isMap(v, LOADOUT_LIMITS.entries, isId, is
 function skillIndexesOf(c) {
   if (!c || typeof c !== 'object') return [];
   if (Array.isArray(c.skills) && c.skills.length) {
-    // MOD: an entry flagged `unreleased` is kept in `skills[]` so the screen can SHOW it (its desc says 暂未实装) but
-    // is never offered as a loadout choice — this is the single shared source both the client screen and the server's
-    // checkLoadout read, so filtering here makes it unselectable on both sides. Used today by 凯尔希·思衡托's S3.
-    return [...new Set(c.skills.filter((s) => s && !s.unreleased).map((s) => s && s.index).filter((i) => isInt(i, 0, LOADOUT_LIMITS.skillIndex)))].sort((a, b) => a - b);
+    return [...new Set(c.skills.map((s) => s && s.index).filter((i) => isInt(i, 0, LOADOUT_LIMITS.skillIndex)))].sort((a, b) => a - b);
   }
   return isInt(c.skill?.index, 0, LOADOUT_LIMITS.skillIndex) ? [c.skill.index] : [];
 }
@@ -212,14 +212,38 @@ export function cultivationCharIds(chess, backups = null) {
 }
 
 /**
+ * Whether a non-default potential changes this operator. Official characters always may: a PRESET without `potDown`
+ * (char_616_pithst) is stored as written and changes no stat, and that stays allowed. A plugin `char_x_` with no
+ * `potDown` and no chained talent curve does not. [ASSUMED] only the plugin prefix is restricted (DESIGN §32.5).
+ * @param {{ chess?: Record<string, any>, backups?: any }|null|undefined} data
+ * @param {string} charId
+ */
+export function charPotentialChanges(data, charId) {
+  if (typeof charId !== 'string' || !charId.startsWith('char_x_')) return true;
+  const chess = data?.chess;
+  if (chess && typeof chess === 'object') {
+    for (const c of Object.values(chess)) if (c?.charId === charId && hasPotentialData(c)) return true;
+  }
+  const unit = data?.backups?.units?.[charId];
+  if (unit) {
+    if (hasPotentialData(unit)) return true;
+    for (const f of Object.values(unit.forms ?? {})) if (hasPotentialData(f)) return true;
+  }
+  return false;
+}
+
+/**
  * Semantic check + normalisation of `room.loadout.ops` (0.2.2) — strict like checkLoadout: an operator `isOperator` does
  * not know (cultivationCharIds) rejects the whole message. Entries equal to the defaults (潜能 6, 练度 3) are dropped, the
  * rest stored complete `{ potential, cultivate }`. `undefined` / `null` = no settings (`{}`).
+ * `changesWithPotential(charId)`, when passed, rejects a non-default potential for an operator whose record has no curve.
+ * Callers that omit it keep the previous behaviour.
  * @param {any} ops
  * @param {(charId: string) => boolean} isOperator
+ * @param {(charId: string) => boolean} [changesWithPotential]
  * @returns {{ ok: true, ops: Record<string, { potential: number, cultivate: number }> } | { error: 'BAD_MSG'|'BAD_TARGET', detail: string }}
  */
-export function checkLoadoutOps(ops, isOperator) {
+export function checkLoadoutOps(ops, isOperator, changesWithPotential = null) {
   if (ops == null) return { ok: true, ops: {} };
   if (!isLoadoutOps(ops)) return { error: 'BAD_MSG', detail: 'bad operator settings' };
   const out = {};
@@ -227,6 +251,9 @@ export function checkLoadoutOps(ops, isOperator) {
     if (typeof isOperator !== 'function' || !isOperator(id)) return { error: 'BAD_TARGET', detail: `unknown operator ${id}` };
     const potential = ops[id].potential ?? POTENTIAL_DEFAULT;
     const cultivate = ops[id].cultivate ?? CULTIVATE_DEFAULT;
+    if (potential !== POTENTIAL_DEFAULT && typeof changesWithPotential === 'function' && changesWithPotential(id) === false) {
+      return { error: 'BAD_TARGET', detail: `potential does not change ${id}` };
+    }
     if (potential === POTENTIAL_DEFAULT && cultivate === CULTIVATE_DEFAULT) continue;
     out[id] = { potential, cultivate };
   }
@@ -343,7 +370,6 @@ const statView = (x) => ({
  * @param {any} [s] aggregated stats (missing ⇒ the base)
  * @returns {{ id: number|null, uid: number|null, defId: string|null, hp: number, alive: boolean, maxHp: number, atk: number,
  *   def: number, res: number, interval: number|null, blockCnt: number, moveSpeed: number,
- *   canHitFly: boolean, liftoff: boolean,
  *   base: { maxHp: number, atk: number, def: number, res: number, interval: number|null, blockCnt: number, moveSpeed: number },
  *   range?: Array<[number, number]>, dir?: string }}
  */
@@ -366,12 +392,6 @@ export function unitStatsEntry(u, s = null) {
     ...(isDir(u?.dir) ? { dir: u.dir } : {}),
     // the enemy card greys a SILENCE-format line (折射) from this; absent flags ⇒ not silenced
     silenced: !!(cur.flags && cur.flags.silence),
-    // What the unit can shoot / block right now, for the detail card's "（可对空）" tag. `canHitFly` is the attack
-    // profile's own bit (professions.resolveProfile: 优先攻击空中单位, a ranged attacker, or the 化鲲为鹏 retype) — also
-    // carried by `s` when a buff grants it, so a live entry keeps it; `liftoff` is the 起飞 state (buff flag, e.g. the
-    // 鲲 band's 阿戈尔), which is what makes a blocker block AIR instead of ground (Battle._blockerFor).
-    canHitFly: !!((cur.canHitFly ?? (u && u.profile ? u.profile.canHitFly : undefined)) ?? u?.canHitFly),
-    liftoff: !!(cur.flags && cur.flags.liftoff),
   };
 }
 
@@ -392,7 +412,7 @@ export const C2S = {
   hello: { name: (v) => isStr(v, NAME_MAX_LEN) && v.trim().length > 0, token: (v) => v == null || isStr(v, 64), version: (v) => v == null || isInt(v, 0, 1e6),
     noReplace: isBool, claimAt: (v) => isNum(v, 0, Number.MAX_SAFE_INTEGER), $optional: ['token', 'version', 'noReplace', 'claimAt'] },
   ping: { c: (v) => typeof v === 'number' && Number.isFinite(v) },
-  'room.create': { mode: (v) => v === 'solo' || v === 'coop', difficulty: (v) => DIFFICULTIES.includes(v), mods: (v) => v === undefined || validMods(v), modOptions: validModOptions },
+  'room.create': { mode: (v) => v === 'solo' || v === 'coop', difficulty: (v) => DIFFICULTIES.includes(v) },
   'room.join': { code: (v) => isStr(v, ROOM_CODE_LEN + 2) && /^[A-Za-z0-9]+$/.test(v) },
   'room.leave': {},
   'room.ready': { ready: isBool },
@@ -410,18 +430,34 @@ export const C2S = {
   'room.cancelReroll': { voteId: (v) => isInt(v, 1, 2 ** 31) },
   // operator loadout (DESIGN §16): stored per session/seat; accepted until the match leaves INFO_CHECK — `ops` (0.2.2):
   // the per-operator 潜能 / 练度 (absent = none set: every operator at 潜能 6, 精英2 Lv.60)
-  'room.loadout': { entries: isLoadoutEntries, ops: isLoadoutOps, $optional: ['ops'], mods: (v) => v === undefined || validMods(v) },
+  'room.loadout': { entries: isLoadoutEntries, ops: isLoadoutOps, $optional: ['ops'] },
   // operator ownership (干员持有, 0.2.0 补位): stored per session / seat; a match takes the list its seat had when it
   // started (an out-of-match setting — during a match it is stored for the next one: ROOM_STARTED)
-  'room.ownership': { notOwned: isNotOwnedList, mods: (v) => v === undefined || validMods(v) },
+  'room.ownership': { notOwned: isNotOwnedList },
   // 自选编队 (0.2.0 DIY): the player's DIY slot picks; stored per session / seat like room.ownership (a match takes the
   // picks its seat had when it started; during a match they are stored for the next one: ROOM_STARTED)
-  'room.diy': { picks: isDiyPicks, mods: (v) => v === undefined || validMods(v) },
+  'room.diy': { picks: isDiyPicks },
   // spectator seats (remake feature, community report #26; MAX_SPECTATORS): take one of a co-op room's spectator seats —
   // in its lobby or while its match runs — never a player seat; the host frees one by playerId (the spectator gets
   // room.closed { reason: 'kicked' }). room.leave / g.leave leave a spectator seat like a player seat.
   'room.spectate': { code: (v) => isStr(v, ROOM_CODE_LEN + 2) && /^[A-Za-z0-9]+$/.test(v) },
   'room.removeSpectator': { playerId: isId },
+  // the room's plugins (DESIGN §32, P1a; host, before the match — like a difficulty change it un-readies the others):
+  // the plugins of this server the room switches on, in any order (the server closes the set over their requirements
+  // and sorts it: shared/plugins/order.js); [] = the original content. Cosmetic plugins (art: the room's visual set,
+  // `vs`) and, from P1c (DESIGN §32.6), content plugins (gameplay: the room's content set, a `cs` of its own); `settings`
+  // is for the classes that have settings (a cosmetic plugin has none, so it is ignored). room.state.content names the set
+  'room.setPlugins': { plugins: (v) => isList(v, 32, (p) => isPlain(p) && isPluginId(p.id)
+    && (p.settings === undefined || isMap(p.settings, 32, (k) => isStr(k, 32), isScalar))) },
+  // the room's mode (DESIGN §32.6, P1c; host, before the match — like a difficulty change it un-readies the others): an
+  // official mode of the room's type (the one of a difficulty: it sets the difficulty) or a mode a plugin of the room's
+  // content set provides (room.state.content.modes; room.state.content.modeId while it is chosen)
+  'room.setMode': { modeId: isId },
+  // the page has loaded and checked the room's content set (DESIGN §32.6): `cs` = the room.state.content.cs it checked —
+  // every data file's bytes against /cs/<cs16>/index.json, that manifest's composition against `cs`; `ok: false` = it
+  // could not (the seat shows it). A room with gameplay plugins starts only once every player's page sent it for its cs
+  'room.consent': { cs: isContentHash, accept: isBool },
+  'room.contentReady': { cs: isContentHash, ok: isBool, $optional: ['ok'] },
 
   // match
   'g.infoReady': { setupRevision: (v) => isInt(v, 0, 2 ** 31), $optional: ['setupRevision'] },
@@ -475,7 +511,21 @@ export const C2S = {
     leaksBy: (v) => isMap(v, RESULT_LIMITS.players, isId, (x) => isNum(x, 0, 1e6)),
     $optional: ['resolved', 'leaks', 'bossDmg', 'by', 'done', 'left', 'leaksBy'],
   },
-  'b.result': { battleId: isId, result: isBattleResult },
+  // `cs` (DESIGN §32, optional): the content hash the reporting browser ran the battle on — its spec's `cs`. In a room
+  // with gameplay plugins (P1c, DESIGN §32.6) the match refuses a result without it or with another one (and runs the
+  // battle itself); a vanilla room's browser sends none
+  'b.result': { battleId: isId, result: isBattleResult, cs: isContentHash, $optional: ['cs'] },
+  // A delegated bot layout rehearsal (DESIGN §14): the match's current host answers the candidates it was handed with
+  // the S2C 'b.rehearsal' frame. `choice` is the index of the candidate its browser picked, in the order the task sent
+  // them — a malicious or buggy client can only name one of the server's own candidate layouts, never a layout or a
+  // match state of its own; `error: true` says this client cannot run the task at all (no module Worker, or the
+  // simulation data did not load), so the server takes the rehearsal over at once instead of waiting for its timeout.
+  // An unknown task, another sender or a task the server already took over is ignored; an invalid `choice` makes the
+  // server run the candidates itself. `choice` stops at 7 because a match rehearses at most 8 candidates.
+  'b.rehearsalResult': {
+    taskId: isId, choice: (v) => v === undefined || isInt(v, 0, 7), error: (v) => v === undefined || v === true,
+    $optional: ['choice', 'error'],
+  },
 };
 
 // Server → client message types (documentation + client dispatch table keys).
@@ -491,6 +541,11 @@ export const S2C = [
   // speed, watch? } · b.pool { hp, max, teamLp, acked: { [fieldId]: cumulative boss damage counted } } ·
   // b.end { battleId, fieldId, reason }
   'b.start', 'b.pool', 'b.end',
+  // a delegated bot layout rehearsal (DESIGN §14): b.rehearsal { taskId, playerId, cap, specs } — the host's browser
+  // runs the candidate BattleSpecs off the page's main thread and answers with a C2S b.rehearsalResult ·
+  // b.rehearsalCancel { taskId } — the server dropped that task (it timed out, the host changed, the prep ended):
+  // the executor drops it too, and only a running simulation (the Worker) is really stopped
+  'b.rehearsal', 'b.rehearsalCancel',
   // server-run combat streaming (legacy / SP_COMBAT=server only)
   'b.snap', 'b.ev',
 ];
@@ -514,10 +569,12 @@ export function validateC2S(msg) {
   return null;
 }
 
-// Event tuple kinds inside `b.ev` (DESIGN §8.2).
+// Event tuple kinds inside `b.ev` (DESIGN §8.2). 'cast' ['cast', id, slot, dur?] is display only: an enemy uses the skill
+// of that slot of its data record's skills[] (server/sim/content/enemies/helpers.js castSlot; the client's skill clip
+// and official skill effects — render/app.js).
 export const EV = Object.freeze({
   SPAWN: 'spawn', ATK: 'atk', DMG: 'dmg', HEAL: 'heal', SKILL: 'skill', ENGAGE: 'engage', DIE: 'die', LEAK: 'leak',
-  STATUS: 'status', FX: 'fx', LAYER: 'layer', BOUNTY: 'bounty', DEPLOY: 'deploy',
+  STATUS: 'status', FX: 'fx', LAYER: 'layer', BOUNTY: 'bounty', DEPLOY: 'deploy', CAST: 'cast',
 });
 
 /**

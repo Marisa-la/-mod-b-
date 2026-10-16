@@ -343,7 +343,3 @@ Each item is a mistake this project already made once. Tick every one for every 
 DESIGN, the changelog and issues cite kits as `kits/tierN.js <name>` (before 0.2.0). That kit is now
 `ops/<chess id>-<codename>.js` — search `ops/` for the chess id, the code name or the Chinese name — and the helpers of
 that file are in `shared/tierN.js`.
-
-## Room-scoped Marisa kits
-
-`MOD_KIT_FILES` lists four appended shop/prototype kits. `mod-aglna2.js` / `mod-kalts2.js` preserve the replacement-package variants alongside the original self-select kits; `op-makoto.js` / `op-amiya3.js` add the remaining kits. Each exports its charId factory, registered as a bare chess id in KITS. `KITTED_CHARS` includes them, while the room data determines whether a candidate is available. A MOD prototype's composed record explicitly names that chess kit in `raw.modKitId`; an overlapping original owned candidate keeps its original charId kit. See [MOD guide](../../../../docs/MODS.md).

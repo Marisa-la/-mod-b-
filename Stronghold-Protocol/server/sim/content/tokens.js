@@ -45,8 +45,6 @@
 //                 refilled by shield_ratio_each_trigger /s when the target was not hit for `interval` s (always while
 //                 凯瑟琳's timed skill runs, owner bb overwrite_ratio)
 //   投递坐标 / 风雪之眼 / 保护目标  inert pieces (no attack; 风雪之眼 untargetable) — their effects belong to the owner kit
-//   塔纳托斯 / 俄耳甫斯 (结城理, `source: mod`)  display-only 人格面具: the mask state and its attacks / heal / 斩杀 rider are
-//                 the owner's own skills (kits/ops/op-makoto.js chess_char_4217_makoto) — inert, untargetable, never placeable
 //   炎佑 (enemy_9012_acloon)  flying ally: flies after the highest-aggro enemy of the field and hovers over it, stays
 //                 put when there is none; 3-target arts + burn on every hit, 元素脆弱 aura, 祛恶之焰 channel (yanyouKit)
 //   预备干员-医疗 / Touch (band map characters)  generic kit / 恳切福音 kit
@@ -92,14 +90,16 @@
 
 import { COLS, ROWS, MOVE_SCALE, FORCED_EXIT } from '../constants.js';
 import { absoluteRangeKeys, sortEnemyTargets, canTargetEnemy } from '../targeting.js';
-import { bodyInKeys, bodyOnTile } from '../body.js';
+import { bodyOnTile, bodyInRange } from '../body.js';
 import { hasHp } from '../damage.js';
+import { textCount } from '../../../shared/plugins/textNumber.js';
 import { genericKit } from './generic.js';
 import { bardRegen } from '../professions.js';
 import { normDir, localOrder } from '../dir.js';
 import { SKILL_SUMMON_START_DEPLOY } from '../../../shared/constants.js';
 import { hypot } from '../detmath.js';
 import { atPotential } from '../../../shared/potential.js';
+import { textFinite } from '../../../shared/plugins/textNumber.js';
 
 const num = (v, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : (typeof v === 'string' && v.trim() !== '' && Number.isFinite(+v) ? +v : d));
 const GRID_3X3 = Object.freeze([[1, -1], [1, 0], [1, 1], [0, -1], [0, 0], [0, 1], [-1, -1], [-1, 0], [-1, 1]]);
@@ -122,13 +122,6 @@ export const TOKEN_IDS = Object.freeze({
   ulpiaMarker: 'token_10039_ulpia_block',
   goldenOath: 'token_10040_siege2_vlion',
   catShield: 'token_10041_cathy_catsld',
-  makotoMask: 'token_makoto_thanatos',
-  makotoMask2: 'token_makoto_orpheus',
-  // MOD 补丁 (战术锚点): 上游没有这个键。锚点是我们加的棋子（data/tokens.json 里早已存在），它的 kit 由
-  // kits/ops/op-kalts2.js 的 anchorKit 提供，经 content/index.js 的 MOD_TOKEN_KITS 注入到下面的 kit 解析里。
-  anchor: 'token_10068_kalts2_mtship',
-  // MOD 补丁 (予愿安洁莉娜 S3 的「一会儿见！」标记位): 同上，kit 来自 kits/ops/op-aglna2.js 的 markerKit。
-  aglna2Marker: 'token_10071_aglna2_agairp',
   deliveryTarget: 'token_10056_angel2_target',
   eagle1: 'token_10057_svash2_eagle1',
   eagle2: 'token_10057_svash2_eagle2',
@@ -258,7 +251,7 @@ function enemiesOnKeys(battle, keys) {
   const out = [];
   for (const e of battle.enemies) {
     if (!e.alive || e.hidden) continue;
-    if (bodyInKeys(e, set)) out.push(e);
+    if (bodyInRange(e, set)) out.push(e);
   }
   return out;
 }
@@ -498,22 +491,6 @@ const inert = ({ hideFromEnemies = false, block = null } = {}) => () => ({
   },
 });
 
-/**
- * 结城理's two 人格面具 (塔纳托斯 / 俄耳甫斯, tokens.json `source: mod`): NOT board pieces. His <替身> state and the
- * Persona fighting inside it are his own skills (kits/ops/op-makoto.js chess_char_4217_makoto: the mask state `mem.makotoMask`
- * picks 塔纳托斯 (S2 / S3) or 俄耳甫斯 (S1), whose attacks / heal / 斩杀 rider the kit resolves on the operator's own
- * attack and skill ticks). The data entries exist so `character_table`'s displayTokenDict resolves and the client can
- * draw the mask's summon fx; they are `display` only (never placeable, never a 援军), exactly like 迷迭香的战术装备 /
- * 投递坐标. The kit therefore keeps them inert (`noAttack`) rather than duplicating the owner kit's damage.
- */
-function maskDisplay() {
-  return {
-    skill: null,
-    trait: { noAttack: true },
-    install(battle, unit) { untargetable(battle, unit); },
-  };
-}
-
 /** 医疗探机 (赫默 S2): heals nearby allies (data heal profile), self-destructs after the withdraw skill time. */
 function healDrone() {
   return {
@@ -522,7 +499,10 @@ function healDrone() {
       const v = variantOf(unit);
       const sk = v?.skill ?? unit.def?.raw?.skill ?? null;
       let life = /^skcom_withdraw/.test(String(sk?.skillId ?? sk?.id ?? '')) ? num(sk.duration, 0) : 0;
-      if (!(life > 0)) { const m = String(sk?.desc ?? sk?.description ?? '').match(/(\d+(?:\.\d+)?)秒后自动销毁/); if (m) life = +m[1]; }
+      if (!(life > 0)) {
+        const secs = textFinite(String(sk?.desc ?? sk?.description ?? ''), /(\d+(?:\.\d+)?)秒后自动销毁/, NaN);
+        if (Number.isFinite(secs)) life = secs;
+      }
       onDeploy(battle, unit, () => scheduleLifetime(battle, unit, life));
     },
   };
@@ -790,8 +770,8 @@ function wolfPack(bb, raw, def) {
   const lb = leader?.bb ?? {};
   const interval = wolfShadowInterval(def);
   const perBlock = num(lb['vigil_wolf_t_1_enhance[trigger].block_cnt'] ?? lb.block_cnt, 1);
-  const mMax = String(leader?.description ?? '').match(/至多(\d+)只/);
-  const maxShadows = mMax ? +mMax[1] : 1 + num(lb['vigil_wolf_t_1_enhance[trigger].max_stack_cnt'], 0);
+  // (counts read from text are capped like every other — textCount, DESIGN §32.5; the official 至多3只 reads 3)
+  const maxShadows = textCount(leader?.description, /至多(\d+)只/, 1 + num(lb['vigil_wolf_t_1_enhance[trigger].max_stack_cnt'], 0), 'at-most-pack');
   const defPen = num(talentBb(def, 'def_penetrate_fixed').def_penetrate_fixed, 0);
   const guardMul = num(talentWith(def, 'prob')?.bb?.damage_scale, 1); // module: 援军受到来自自身阻挡单位的伤害降低
   const s3Key = Object.keys(bb || {}).find((k) => /atk_scale$/.test(k));
@@ -807,8 +787,7 @@ function wolfPack(bb, raw, def) {
       unit.mem.wolfCapacity = maxShadows; // (b.snap `wolves`, snapshot.js wolfView: the pips under the HP bar)
       // initial shadows: 伺夜's talent text ("初始两只"), else one below the maximum
       const ot = (ownerOf(unit)?.def?.talents || []).map((t) => t.description || '').join(' ');
-      const mi = ot.match(/初始(两|二|\d+)只/);
-      const initShadows = Math.max(1, Math.min(maxShadows, mi ? (/\d/.test(mi[1]) ? +mi[1] : 2) : maxShadows - 1));
+      const initShadows = Math.max(1, Math.min(maxShadows, textCount(ot, /初始(两|二|\d+)只/, maxShadows - 1, 'initial-pack')));
       onDeploy(battle, unit, () => {
         // back from its 战术点形态 (wolfReturnNow): 1 狼影 (PRTS 狼群 "从战术点形态转变为召唤物形态后拥有1只“狼影”") and a
         // fresh growth cycle; any other deployment: the initial count
@@ -1636,8 +1615,6 @@ const RAW_KITS = {
   [TOKEN_IDS.ulpiaMarker]: ulpiaMarker,
   [TOKEN_IDS.goldenOath]: goldenOath,
   [TOKEN_IDS.catShield]: catShield,
-  [TOKEN_IDS.makotoMask]: maskDisplay,
-  [TOKEN_IDS.makotoMask2]: maskDisplay,
   [TOKEN_IDS.deliveryTarget]: inert({ hideFromEnemies: true }),
   [TOKEN_IDS.eagle1]: inert({ hideFromEnemies: true }),
   [TOKEN_IDS.eagle2]: inert({ hideFromEnemies: true }),

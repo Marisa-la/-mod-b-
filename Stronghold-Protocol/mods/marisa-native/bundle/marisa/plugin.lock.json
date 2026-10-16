@@ -1,0 +1,33 @@
+{
+  "lock": 1,
+  "id": "marisa",
+  "version": "0.3.0",
+  "generator": "tools/plugin.mjs pack",
+  "files": {
+    "README.md": {
+      "sha256": "c7693ccd4ed0138b9b741fba130b1c79e0fd5f72f8122e3683f475adb81aeda4",
+      "bytes": 378
+    },
+    "data/profile.json": {
+      "sha256": "6530820e633f3637a5271b5be0a9ed0592d166139794559e04cdbddcf432a922",
+      "bytes": 4736103
+    },
+    "guard.json": {
+      "sha256": "922fda47860a66dfaec7393ce9e36c2359171045bda3113e6dd4bd958c96f4dc",
+      "bytes": 1220
+    },
+    "plugin.json": {
+      "sha256": "3148428e034eb8a0f89d9380dd6922e464719863b932ac37fa1f706ba1ab9350",
+      "bytes": 6876
+    },
+    "sim/index.js": {
+      "sha256": "299b3222d5a72d4908f7e026639c52ea027c2a3018f46dac7a9271dc51deaa08",
+      "bytes": 290993
+    },
+    "test/guard.test.js": {
+      "sha256": "96ea8210d0fb200291c3aec63c5c7183a82e9c58048d51fbd7b2826c58eac0ed",
+      "bytes": 8791
+    }
+  },
+  "spine": {}
+}

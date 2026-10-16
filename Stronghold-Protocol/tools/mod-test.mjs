@@ -3,7 +3,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { roomProfile } from '../server/mods.js';
+import {prepareMarisaTest} from './marisa-test-runtime.mjs';
+const roomProfile=await prepareMarisaTest();
 import { DataSource } from '../server/sim/simdata.js';
 import { buildBattleSpec, createBattleFromSpec } from '../server/sim/spec.js';
 import { GameData } from '../server/match/gamedata.js';
@@ -67,7 +68,7 @@ export function createTestRecording(o = {}) {
   if (!['kun', 'skill', 'rhode', 'wave', 'kun-wave'].includes(scenario)) throw new Error('场景应为 kun、skill、rhode、wave 或 kun-wave');
   if (o.vanilla && ['kun', 'rhode', 'kun-wave'].includes(scenario)) throw new Error('原版没有鲲或罗德岛，请使用 skill 或 wave 场景');
   const name = o.operator || (scenario === 'rhode' ? '阿米娅' : '乌尔比安');
-  const main = o.operator ? resolveTestChess(data, name, !!o.elite) : resolveTestChess(data, scenario === 'rhode' ? 'chess_char_1037_amiya3_a' : 'chess_char_5_05_a', !!o.elite);
+  const main = o.operator ? resolveTestChess(data, name, !!o.elite) : resolveTestChess(data, scenario === 'rhode' ? 'chess_x_marisa_amiya3_a' : 'chess_char_5_05_a', !!o.elite);
   const skill = o.skill == null ? (main.skill?.index ?? main.skillIndex ?? 0) : number(o, 'skill', 1, 1, main.skills.length) - 1;
   if (!Number.isInteger(skill)) throw new Error('--skill 必须是整数');
   const stageId = o.stage || 'act1autochess_m01', stage = data.stages[stageId];
@@ -105,13 +106,13 @@ export function createTestRecording(o = {}) {
       if (scenario === 'kun-wave') add(rec, [first[0], first[1] + 4 - i], i === 0 ? skill : rec.skillIndex, 'LEFT');
       else add(rec, [first[0], first[1] + i], i === 0 ? skill : rec.skillIndex);
     });
-    bonds = { egirShip: { active: true, count: 3, tier: 1, layers: 0 } }; bandId = 'band_kun';
+    bonds = { egirShip: { active: true, count: 3, tier: 1, layers: 0 } }; bandId = 'band_x_marisa_kun';
   } else {
     place(main, skill);
-    const others = o.units ? o.units.split(',') : scenario === 'rhode' ? ['chess_char_1052_kalts2_a', 'chess_char_4_26_a'] : [];
+    const others = o.units ? o.units.split(',') : scenario === 'rhode' ? ['chess_x_marisa_kalts2_a', 'chess_char_4_26_a'] : [];
     if (others.length > 11) throw new Error('--units 最多添加 11 名干员');
     for (const raw of others) place(resolveTestChess(data, raw.replace(/\*$/, ''), raw.endsWith('*')));
-    if (scenario === 'rhode') bonds = { rhodeShip: { active: true, count: 3, tier: 2, layers }, miraShip: { active: true, count: 2, tier: 1, layers } };
+    if (scenario === 'rhode') bonds = { bond_x_marisa_rhodeShip: { active: true, count: 3, tier: 2, layers }, miraShip: { active: true, count: 2, tier: 1, layers } };
   }
   let wave = { spawns: [], routes: [], overrides: {} };
   if (scenario === 'wave' || scenario === 'kun-wave') {
@@ -120,7 +121,7 @@ export function createTestRecording(o = {}) {
     wave = buildNormalWave(gd, createRng(seed + round), setup.factions, round);
     if (!wave.spawns?.length) throw new Error('该回合不是常规波次；请换常规回合，首领/联防回归可用文档内测试命令');
   }
-  const spec = buildBattleSpec({ kind: 'normal', fieldId: 'mod-test', battleId: 'mod-test', mods: profile.mods, contentHash: profile.contentHash,
+  const spec = buildBattleSpec({ kind: 'normal', fieldId: 'mod-test', battleId: 'mod-test', cs: profile.cs,
     modeId, round, stageId, seed, timeLimit: seconds, waveId: wave.templateId, spawns: wave.spawns, routes: wave.routes, enemyOverrides: wave.overrides,
     flags: { startOpCooldown: 0, dpInit: 99, dpMax: 99, layerGainsEnabled: true }, players: [{ playerId: 'test', seat: 0, side: 'L', colOffset: 0, units, bonds, bandId }] });
   const b = createBattleFromSpec(spec, new DataSource(data)); b.autoFinish = false;
@@ -182,7 +183,7 @@ export function createTestRecording(o = {}) {
     blockedAir: blockedAir.size, blockedGround: blockedGround.size,
     blockedAirWhileAirborne: blockedAirWhileAirborne.size, blockedGroundWhileAirborne: blockedGroundWhileAirborne.size, revives,
     allies: b.allyUnits.map((u) => ({ name: u.name, uid: u.uid, alive: u.alive, liftoff: !!u.s.flags.liftoff, canHitFly: !!u.profile.canHitFly, damage: u.stats.dmg })) };
-  return { recording: { version: 1, name: 'mod-test', title: `${main.name} S${skill + 1} · ${scenario}`, kind: 'normal', stageId, modeId, round, field, frames, duration: b.time, result: { errors: 0, killed: result.killed }, report }, report };
+  return { recording: { data, cs: profile.cs, version: 1, name: 'mod-test', title: `${main.name} S${skill + 1} · ${scenario}`, kind: 'normal', stageId, modeId, round, field, frames, duration: b.time, result: { errors: 0, killed: result.killed }, report }, report };
 }
 
 function main(args) {

@@ -13,6 +13,7 @@
 //        &fa=L|R (prep on that half of the Final Assault boss field, view.setCamera('bossPrep', { side }))
 //        &board=2d|3d (the official 3D board scene, DESIGN §15; default 3D when the local art + WebGL2 are available)
 //        &cam=prep|normal|unite|boss|pen|bossPrep [&side=L|R &half=1 &shop=0] (official configBlackBoard framings)
+//        &fx=auto|off|lite|full (设置「官方特效」, default auto as in the game; off shows only the procedural effects)
 // Puppeteer hook: window.__demo = { ready, view, seek(t), play(), pause(), setScene(name), stats(), log,
 //   refuseDrops (true ⇒ prep drops are silently ignored, like a server that rejects the move) }
 
@@ -21,7 +22,6 @@ import { data } from '../js/data.js';
 import { assets } from '../js/assets.js';
 import { GEO } from '../../shared/constants.js';
 import { FX_KINDS } from '../js/render/fx.js';
-import { t } from '../../shared/i18n.js';
 
 const $ = (id) => document.getElementById(id);
 const q = new URLSearchParams(location.search);
@@ -43,12 +43,15 @@ const STAGE_IDS = ['act2autochess_m01', 'act2autochess_m02', 'act2autochess_m03'
 
 async function main() {
   if (q.get('panel') === '0') $('panel').classList.add('is-hidden');
-  if (q.get('mods') === 'marisa') await data.setProfile(['marisa']);
+  if(q.get('scene')==='mod-test'){
+    const rec=await fetch('/dev/recordings/mod-test.json').then(r=>r.json());
+    if(rec.data)data.setContent({id:rec.cs,values:rec.data});
+  }
   await data.loadAll('chess', 'tokens', 'items', 'enemies', 'stages', 'bonds', 'config');
   await assets.ready();
   const index = await fetch('/dev/recordings/index.json').then((r) => (r.ok ? r.json() : []), () => []);
   const view = await createFieldView($('field'), {
-    data, assets, settings: { quality: q.get('quality') || 'high', damageNumbers: true },
+    data, assets, settings: { quality: q.get('quality') || 'high', damageNumbers: true, ...(q.has('fx') ? { officialFx: q.get('fx') } : {}) },
     ...(q.has('aa') ? { antialias: q.get('aa') !== '0' } : {}),
   });
   demo.view = view;
@@ -56,8 +59,8 @@ async function main() {
 
   // ---- UI --------------------------------------------------------------------------------------------------
   const sceneSel = $('scene');
-  const generated = q.get('scene') === 'mod-test' ? [{ name: 'mod-test', title: t('单场测试'), rec: { file: 'mod-test.json' } }] : [];
-  const scenes = [{ name: 'prep', title: '休整期 · 拖拽演示' }, ...generated, ...index.map((r) => ({ name: r.name, title: r.title, rec: r })), { name: 'stress', title: '压力测试 · 120 单位' }, { name: 'fx', title: '特效图鉴 · 全部 fx' }, { name: 'numbers', title: '伤害数字 · 重叠测试' }];
+  const generated=q.get('scene')==='mod-test'?[{name:'mod-test',title:t('单场测试'),rec:{file:'mod-test.json'}}]:[];
+  const scenes = [...generated,{ name: 'prep', title: '休整期 · 拖拽演示' }, ...index.map((r) => ({ name: r.name, title: r.title, rec: r })), { name: 'stress', title: '压力测试 · 120 单位' }, { name: 'fx', title: '特效图鉴 · 全部 fx' }, { name: 'numbers', title: '伤害数字 · 重叠测试' }];
   for (const s of scenes) sceneSel.append(new Option(s.title, s.name));
   const stageSel = $('stage');
   for (const id of STAGE_IDS) { const st = data.lookup('stages', id); if (st) stageSel.append(new Option(st.name || id, id)); }

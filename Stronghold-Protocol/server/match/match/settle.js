@@ -1,16 +1,15 @@
 // server/match/match/settle.js — Match methods: SETTLE (the LP loss — a leaker's 联防 survivors —, stats, bounty coins,
-// the IN_BATTLE layer gains clamped by layerGainRoom, the 整备期 罗德岛 mirror accumulated during the prep
-// (server/match/rhodeMeta.js settlePrepGain — same phase, once), CHAR_DAMAGE tickers, eliminations, the 联防 outcome the
-// SETTLE view carries) and RESULT (finish: m.result to every human still here, onEnd).
+// the IN_BATTLE layer gains clamped by layerGainRoom, CHAR_DAMAGE tickers, eliminations, the 联防 outcome the SETTLE
+// view carries) and RESULT (finish: m.result to every human still here, onEnd).
 // Installed on Match.prototype by server/match/Match.js (a method container: never instantiated; `this` is the match).
 
 import { PHASE, layerGainRoom } from '../../../shared/constants.js';
 import { uniteSurvivors } from '../unite.js';
 import { buildResult } from '../results.js';
-import { settlePrepGain } from '../rhodeMeta.js';
 import { FLOW_TICKER_PRIORITY, DELAYS } from './common.js';
 import { msg } from '../../../shared/i18n.js';
 import { onSettle, resetRoundCounters } from '../botEmotes.js';
+import { creditedKillsOf } from '../../sim/spec.js';
 
 export class MatchSettle {
   settle(plan, uniteResult) {
@@ -56,6 +55,7 @@ export class MatchSettle {
         ps.stats.dmgDealt += Number(up.damageDealt) || 0;
         ps.stats.kills += Number(up.killed) || 0;
       }
+      ps.creditedKills += creditedKillsOf(r) + creditedKillsOf(up);
       // perfect-payout bounties (战术特训): own phase perfect
       for (const b of ps.bounties) if (b.card.payout === 'perfect' && counted === 0 && r.perfect !== false) coins += b.card.coin;
       if (coins > 0) { ps.pendingFunds += coins; ps.stats.fundsGained += coins; }
@@ -70,18 +70,6 @@ export class MatchSettle {
         if (!(add > 0)) continue;
         ps.layers[bondId] = before + add;
         this.dispatch(ps, 'onLayers', { bondId, from: before, to: ps.layers[bondId], reason: 'battle' });
-      }
-      // 整备期 mirror of 【罗德岛】 clause 1 (MOD, owner 2026-10-08; server/match/rhodeMeta.js settlePrepGain): the
-      // prep-side gains a 罗德岛 member's range mirrored this round become persistent layers HERE, once, next to the
-      // IN_BATTLE gains above and after them — a bond that only this battle activated holds its layers by now and so
-      // counts toward 罗德岛's cap (「不超过已激活的其他盟约中最高的层数」). The accumulator is the source of truth of
-      // its own overflow (what the cap refused waits for the next settlement), never `pendingLayerGains` (cleared at
-      // the top of settle()): the two paths are disjoint by phase, PREP/SETTLE, so no gain is settled twice.
-      const rhodeAdd = settlePrepGain(ps);
-      if (rhodeAdd > 0) {
-        const before = ps.layers.rhodeShip || 0;
-        ps.layers.rhodeShip = before + rhodeAdd;
-        this.dispatch(ps, 'onLayers', { bondId: 'rhodeShip', from: before, to: ps.layers.rhodeShip, reason: 'prep' });
       }
       this._charDamageTickers(ps, r);
       this.dispatch(ps, 'onBattleResult', { result: r, lpLoss: loss, perfect: counted === 0 && r.perfect !== false, unite: uniteResult || null });

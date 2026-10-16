@@ -21,7 +21,7 @@ const METHODS = ['setStage', 'setCamera', 'setPrep', 'enterBattle', 'pushSnapsho
 // setPen (enemy preview pen list), prepField ({ kind, side, mirror } of the Final Assault prep), stripesUnder (the view
 // stripes range previews under the units itself), replayDeploys (the round start's Start-clip replay, PR #416) —
 // render/app.js; the DOM fallback lacks them (→ null)
-const OPTIONAL = ['pieceScreenRect', 'setSettings', 'off', 'tileScreen', 'holdPiece', 'setPieceDir', 'setPen', 'prepField', 'stripesUnder', 'replayDeploys'];
+const OPTIONAL = ['pieceScreenRect', 'pieceAtClientPoint', 'setSettings', 'off', 'tileScreen', 'holdPiece', 'setPieceDir', 'setPen', 'prepField', 'stripesUnder', 'replayDeploys'];
 
 /**
  * Camera padding (px) that keeps the field clear of the DOM HUD (top bar + bond strip, team panel, shop bar /
@@ -193,7 +193,9 @@ export function guardView(view, kind) {
  * screen waits for them, gameComponents GAME_FILES) to the asset store, now or when they land: it then never downloads
  * the manifest a second time — after a page reload (a phone browser discarding a background tab, Chrome's Memory Saver)
  * that second download was the one createFieldView waited ≤ 4 s for, and a slow or failed one left every operator the
- * image-less placeholder (public issue #8 item 5). Without a copy the store fetches and retries by itself.
+ * image-less placeholder (public issue #8 item 5). Without a copy the store fetches and retries by itself. The copy as
+ * downloaded (data.getRaw): the store lays the cosmetic plugins over it itself (assets.js `cosmetics`), data.js's view
+ * of `assets` already has them.
  * @param {{ seed?: (m: any) => boolean, seedLocal?: (m: any) => boolean }} store public/js/assets.js store
  */
 export function seedAssets(store) {

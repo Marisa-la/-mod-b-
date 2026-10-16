@@ -20,7 +20,7 @@
 import { getData } from '../../../data.js';
 import { COLS, DIRECT_BONUS_STACKING } from '../../constants.js';
 import { frontOf, offsetTile } from '../../dir.js';
-import { bodyInKeys, bodyDist, bodyInRadius, bodyOnTile, bodyTileReach } from '../../body.js';
+import { bodyInKeys, bodyDist, bodyInRadius, bodyOnTile, bodyTileReach, bodyInRange } from '../../body.js';
 
 export { COLS };
 /** Where an enemy can be hit (a huge enemy's whole hit rectangle, sim/body.js) — for every range test on enemies. */
@@ -35,29 +35,6 @@ const own = (o, k) => (o && typeof o === 'object' && typeof k === 'string' && Ob
 const QUIET = Object.freeze({ warn() {}, error() {}, info() {} });
 
 let DATA = null;
-const SOURCES = new WeakMap();
-const CORE_CACHE = new WeakMap();
-export function contentDataOf(source) {
-  if (!source || typeof source !== 'object') return gameData();
-  if (SOURCES.has(source)) return SOURCES.get(source);
-  const parent = source.fallback ? contentDataOf(source.fallback) : gameData();
-  const out = { ...parent, ...source.contentRaw };
-  for (const [name, value] of Object.entries(source.raw || {})) {
-    if (value == null) continue;
-    out[name] = value && typeof value === 'object' && !Array.isArray(value)
-      ? { ...(out[name] || {}), ...value } : value;
-  }
-  SOURCES.set(source, out);
-  return out;
-}
-// The engine is synchronous. A scoped context is restored even when a hook throws
-// or steps another room's battle, so concurrent profiles never share content state.
-export function withGameData(data, run) {
-  if (DATA === data) return run();
-  const previous = DATA, core = CORE;
-  DATA = data; CORE = CORE_CACHE.get(data) || null;
-  try { return run(); } finally { if (CORE) CORE_CACHE.set(data, CORE); DATA = previous; CORE = core; }
-}
 /** Frozen data/*.json (process singleton of server/data.js). Never mutate. */
 export function gameData() {
   if (!DATA) {
@@ -72,10 +49,12 @@ export const bondRecord = (id) => own(gameData().bonds, id);
 export const itemRecord = (id) => own(gameData().items, id);
 export const garrisonRecord = (id) => own(gameData().garrisons, id);
 export const bandRecord = (id) => own(gameData().bands, id);
+/** Behaviour identity, while the concrete record still supplies all numbers. */
+export const bandEffectId = id => bandRecord(id)?.effectRef ?? id;
 export const effectRecord = (id) => own(gameData().effects, id);
 export const chessRecord = (id) => own(gameData().chess, id);
 /** Registry key of an item: id without the `_a` / `_b` suffix (Arts have none). */
-export const itemKeyOf = (id) => String(id ?? '').replace(/_[ab]$/, '');
+export const itemKeyOf = (id) => String(itemRecord(id)?.effectRef ?? id ?? '').replace(/_[ab]$/, '');
 /** True for golden (进阶) items / elite chess ids. */
 export const isGoldenId = (id) => /_b$/.test(String(id ?? ''));
 
@@ -155,8 +134,8 @@ export function contentInfo(battle, pid) {
 /** Alive players' bands (own first), plus a retained Touch team grant; falls back to this battle's players. */
 export function matchBands(battle, pid) {
   const mb = contentInfo(battle, pid).matchBands;
-  if (Array.isArray(mb) && mb.length) return mb;
-  return (battle.players || []).map((p) => p.bandId).filter(Boolean);
+  if (Array.isArray(mb) && mb.length) return mb.map(bandEffectId);
+  return (battle.players || []).map((p) => bandEffectId(p.bandId)).filter(Boolean);
 }
 
 // =====================================================================================================================
@@ -288,7 +267,7 @@ export const tileKey = (u) => (u.side === 'ally' ? u.tileR * COLS + u.tileC : Ma
 /** Is `target` on a tile of `keys` (Set or array)? An ally: its tile; an enemy: its body (a huge one: every tile). */
 export const onKeys = (target, keys) => {
   if (!target || !keys) return false;
-  if (target.side !== 'ally') return bodyInKeys(target, keys);
+  if (target.side !== 'ally') return bodyInRange(target, keys);
   const k = tileKey(target);
   return keys instanceof Set ? keys.has(k) : keys.includes(k);
 };

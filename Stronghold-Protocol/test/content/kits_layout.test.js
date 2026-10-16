@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { KIT_FILES, TIER_KITS, KITS, STANDIN_KIT_FILES, STANDIN_KITS, OPERATOR_KIT_FILES, OPERATOR_KITS, MOD_KIT_FILES, GENERIC_KIT_CHARS, KITTED_CHARS } from '../../server/sim/content/kits/index.js';
+import { KIT_FILES, TIER_KITS, KITS, STANDIN_KIT_FILES, STANDIN_KITS, OPERATOR_KIT_FILES, OPERATOR_KITS, GENERIC_KIT_CHARS, KITTED_CHARS } from '../../server/sim/content/kits/index.js';
 import { KITS as CONTENT_KITS } from '../../server/sim/content/index.js';
 import { diyRecord } from '../../shared/diy.js';
 import { normalizeChess } from '../../server/sim/simdata.js';
@@ -24,7 +24,7 @@ const BACKUPS = JSON.parse(readFileSync(join(ROOT, 'data/backups.json'), 'utf8')
 const jsIn = (dir) => readdirSync(join(KIT_DIR, dir)).filter((f) => f.endsWith('.js')).sort();
 
 test('kits/index.js lists every kit file of kits/ops/ exactly once, and only those', () => {
-  const listed = [...KIT_FILES.flat(), ...STANDIN_KIT_FILES, ...OPERATOR_KIT_FILES, ...MOD_KIT_FILES];
+  const listed = [...KIT_FILES.flat(), ...STANDIN_KIT_FILES, ...OPERATOR_KIT_FILES];
   assert.equal(new Set(listed).size, listed.length, 'a file listed twice');
   assert.deepEqual([...listed].sort(), jsIn('ops'));
 });
@@ -67,9 +67,7 @@ test('a 自选 kit file op-<codename>.js registers the kit of that owned-6★ pi
       }
     }
   }
-  const modModules = await Promise.all(MOD_KIT_FILES.map((file) => import(`../../server/sim/content/kits/ops/${file}`)));
-  const modChars = modModules.flatMap((mod) => Object.keys(mod.default));
-  assert.deepEqual([...KITTED_CHARS].sort(), [...new Set([...GENERIC_KIT_CHARS, ...Object.keys(STANDIN_KITS), ...Object.keys(OPERATOR_KITS), ...modChars])].sort());
+  assert.deepEqual([...KITTED_CHARS].sort(), [...new Set([...GENERIC_KIT_CHARS, ...Object.keys(STANDIN_KITS), ...Object.keys(OPERATOR_KITS)])].sort());
 });
 
 test('a kit file <chessId>-<codename>.js registers the kit of <chessId>_a (codename: its charId without char_<n>_)', async () => {
@@ -88,9 +86,8 @@ test('a kit file <chessId>-<codename>.js registers the kit of <chessId>_a (coden
 });
 
 test('the registry is the tier groups in KIT_FILES order, then the stand-ins, then the 自选 operators, one key per file; content/index.js serves the same object', () => {
-  const modKeys = ['chess_char_4217_makoto', 'chess_char_1015_aglna2', 'chess_char_1052_kalts2', 'chess_char_1037_amiya3'];
-  assert.deepEqual(Object.keys(KITS), [...TIER_KITS.flatMap((t) => Object.keys(t)), ...Object.keys(STANDIN_KITS), ...Object.keys(OPERATOR_KITS), ...modKeys]);
-  assert.equal(Object.keys(KITS).length, KIT_FILES.flat().length + STANDIN_KIT_FILES.length + OPERATOR_KIT_FILES.length + MOD_KIT_FILES.length, 'one key per file, none twice');
+  assert.deepEqual(Object.keys(KITS), [...TIER_KITS.flatMap((t) => Object.keys(t)), ...Object.keys(STANDIN_KITS), ...Object.keys(OPERATOR_KITS)]);
+  assert.equal(Object.keys(KITS).length, KIT_FILES.flat().length + STANDIN_KIT_FILES.length + OPERATOR_KIT_FILES.length, 'one key per file, none twice');
   assert.equal(CONTENT_KITS, KITS);
 });
 
