@@ -326,3 +326,6 @@ P3b integration (DESIGN §32.11): sandbox script sets require valid locked bytes
 `content.trusted`. Execution mode is bound to cs through the hashed script descriptors. Mixed script/trusted sets
 are entirely native and require consent [ASSUMED]; trusted classes cannot load in sandbox mode. The page verifies
 same-origin native script responses before import; all gameplay battle simulations run in Workers.
+
+The Marisa launcher uses the same default dual-stack bind as the vanilla launcher, retaining HOST / --host overrides
+and IPv4 fallback. It enables sandbox scripts without forcing a loopback-only listener; LAN and VPN guests can connect.
